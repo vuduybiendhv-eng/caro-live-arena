@@ -61,7 +61,68 @@
       <p class="hint" id="gameMessage">Chia sẻ mã phòng để mời người chơi thứ hai.</p>
     </section>
 
-    <footer>CARO LIVE ARENA <span>·</span> BẢN THỬ NGHIỆM</footer>
+    
+<section class="panel hidden" id="liveHostPanel">
+  <div class="section-heading">
+    <div>
+      <small>QUẢN TRỊ PHÁT TRỰC TIẾP</small>
+      <h2>LIVE HOST CENTER</h2>
+    </div>
+    <span class="avatar">👑</span>
+  </div>
+
+  <div class="status-bar">
+    CHẾ ĐỘ QUẢN TRỊ · CHỈ HOST
+  </div>
+
+  <label for="queuePlayerName">Tên TikTok người đăng ký</label>
+  <input id="queuePlayerName"
+         maxlength="30"
+         placeholder="Nhập tên người chơi">
+
+  <label for="queueGiftValue" style="margin-top:12px">
+    Giá trị quà (xu)
+  </label>
+  <input id="queueGiftValue"
+         type="number"
+         min="1"
+         max="1000000"
+         placeholder="Ví dụ: 100">
+
+  <button class="primary"
+          id="queueAddBtn"
+          style="width:100%;margin-top:12px">
+    + Thêm vào hàng chờ
+  </button>
+
+  <div class="room-head" style="margin-top:22px">
+    <div>
+      <small>DANH SÁCH ƯU TIÊN</small>
+      <strong style="font-size:19px;letter-spacing:0">
+        HÀNG CHỜ LIVE
+      </strong>
+    </div>
+    <span id="queueCount">0 người</span>
+  </div>
+
+  <div id="liveQueueList" style="margin-top:12px">
+    <p class="hint">Chưa có người đăng ký.</p>
+  </div>
+
+  <div class="game-actions">
+    <button class="secondary" id="queueSkipBtn">
+      Bỏ qua người đầu
+    </button>
+    <button class="primary" id="queueNextBtn">
+      Chọn người tiếp theo
+    </button>
+  </div>
+
+  <p class="hint" id="liveHostMessage">
+    Bảng quản lý chỉ dành cho HOST.
+  </p>
+</section>
+
   </main>
 
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
