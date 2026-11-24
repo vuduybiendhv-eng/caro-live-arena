@@ -123,6 +123,9 @@
     } catch (e) { message(setupMessage, e.message, true); }
   }
 
+
+
+    
 async function joinRoom() {
   playerName = getName();
 
@@ -136,23 +139,23 @@ async function joinRoom() {
   message(setupMessage, "Đang kiểm tra phòng...");
 
   const ref = db.ref("games/" + code);
+  let txDebug = "Không rõ nguyên nhân";
 
   try {
-    // Kiểm tra phòng trước khi tham gia
     const snap = await ref.once("value");
 
     if (!snap.exists()) {
-      throw new Error("Không tìm thấy mã phòng " + code);
+      throw new Error("Không tìm thấy phòng " + code);
     }
 
     const room = snap.val();
 
     if (room.hostUid === uid) {
-      throw new Error("Máy này đang dùng tài khoản chủ phòng.");
+      throw new Error("Hai máy đang dùng cùng tài khoản Firebase.");
     }
 
     if (room.status !== "waiting") {
-      throw new Error("Phòng không ở trạng thái chờ. Trạng thái: " + room.status);
+      throw new Error("Trạng thái phòng: " + room.status);
     }
 
     if (room.guestUid) {
@@ -162,13 +165,27 @@ async function joinRoom() {
     message(setupMessage, "Đang tham gia phòng...");
 
     const result = await ref.transaction(current => {
-      if (!current) return;
+      if (!current) {
+        txDebug = "Dữ liệu phòng không tồn tại trong giao dịch";
+        return;
+      }
 
-      if (current.status !== "waiting") return;
+      if (current.status !== "waiting") {
+        txDebug = "Trạng thái hiện tại: " + current.status;
+        return;
+      }
 
-      if (current.guestUid) return;
+      if (current.guestUid) {
+        txDebug = "Phòng đã có guestUid: " + current.guestUid;
+        return;
+      }
 
-      if (current.hostUid === uid) return;
+      if (current.hostUid === uid) {
+        txDebug = "UID máy 2 trùng UID chủ phòng";
+        return;
+      }
+
+      txDebug = "Đủ điều kiện nhưng giao dịch chưa được xác nhận";
 
       current.guestUid = uid;
       current.guestName = playerName;
@@ -178,7 +195,7 @@ async function joinRoom() {
     });
 
     if (!result.committed) {
-      throw new Error("Không thể nhận phòng. Có thể người khác đã tham gia trước.");
+      throw new Error(txDebug);
     }
 
     await connectRoom(code);
@@ -186,6 +203,8 @@ async function joinRoom() {
   } catch (e) {
     message(setupMessage, "Lỗi tham gia: " + e.message, true);
   }
+}
+
 }
 
   async function play(index) {
