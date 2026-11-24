@@ -2,14 +2,15 @@
 (() => {
   "use strict";
 
-  // CARO LIVE ARENA - VERSION 13
-  // LIVE HOST CENTER + PRIORITY QUEUE
+  // CARO LIVE ARENA - VERSION 14
+  // CARO GAME + LIVE HOST + PRIORITY QUEUE + AUTO ROOM
 
   const $ = id => document.getElementById(id);
 
   const SIZE = 15;
   const TOTAL = SIZE * SIZE;
 
+  // UID HOST DUY NHẤT
   const HOST_UID = "F8pIRePt0cYnHSHWD4C4ZUzYgHe2";
 
   let db = null;
@@ -20,8 +21,10 @@
   let roomCode = null;
   let roomListener = null;
   let currentRoom = null;
+
   let playerName = "Người chơi";
   let busy = false;
+
   let queueRef = null;
   let queueListener = null;
 
@@ -172,7 +175,10 @@
 
     if (room.status === "waiting") {
       $("statusBar").textContent = "ĐANG CHỜ NGƯỜI CHƠI THỨ HAI";
-      message(gameMessage, "Gửi mã phòng " + roomCode + " cho đối thủ.");
+      message(
+        gameMessage,
+        "Gửi mã phòng " + roomCode + " cho đối thủ."
+      );
       return;
     }
 
@@ -222,7 +228,11 @@
     };
 
     roomRef.on("value", roomListener, error => {
-      message(gameMessage, "Lỗi đọc phòng: " + error.message, true);
+      message(
+        gameMessage,
+        "Lỗi đọc phòng: " + error.message,
+        true
+      );
     });
 
     showGame();
@@ -266,14 +276,23 @@
         board: emptyBoard(),
         turn: "X",
         status: "waiting",
+        winner: null,
         createdAt: firebase.database.ServerValue.TIMESTAMP
       });
 
       await connectRoom(code);
-      message(gameMessage, "Đã tạo phòng " + code + ". Gửi mã cho đối thủ.");
+
+      message(
+        gameMessage,
+        "Đã tạo phòng " + code + ". Gửi mã cho đối thủ."
+      );
 
     } catch (error) {
-      message(setupMessage, "Lỗi tạo phòng: " + error.message, true);
+      message(
+        setupMessage,
+        "Lỗi tạo phòng: " + error.message,
+        true
+      );
     } finally {
       busy = false;
     }
@@ -293,7 +312,11 @@
     const code = input.value.trim().toUpperCase();
 
     if (!/^[A-Z0-9]{6}$/.test(code)) {
-      message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
+      message(
+        setupMessage,
+        "Mã phòng phải gồm đúng 6 ký tự.",
+        true
+      );
       return;
     }
 
@@ -311,7 +334,9 @@
       const room = snapshot.val();
 
       if (room.hostUid === uid) {
-        throw new Error("Máy này đang dùng cùng tài khoản với chủ phòng.");
+        throw new Error(
+          "Máy này đang dùng cùng tài khoản với chủ phòng."
+        );
       }
 
       if (room.status !== "waiting") {
@@ -330,15 +355,26 @@
 
       const verifySnapshot = await ref.once("value");
 
-      if (!verifySnapshot.exists() || verifySnapshot.val().guestUid !== uid) {
+      if (
+        !verifySnapshot.exists() ||
+        verifySnapshot.val().guestUid !== uid
+      ) {
         throw new Error("Máy chủ chưa xác nhận tham gia.");
       }
 
       await connectRoom(code);
-      message(gameMessage, "Tham gia phòng thành công. Anh chơi quân O.");
+
+      message(
+        gameMessage,
+        "Tham gia phòng thành công. Anh chơi quân O."
+      );
 
     } catch (error) {
-      message(setupMessage, "Lỗi tham gia: " + error.message, true);
+      message(
+        setupMessage,
+        "Lỗi tham gia: " + error.message,
+        true
+      );
     } finally {
       busy = false;
     }
@@ -348,6 +384,7 @@
     if (!roomRef || !currentRoom) return;
 
     const role = getRole(currentRoom);
+
     if (!role || currentRoom.status !== "playing") return;
 
     try {
@@ -362,24 +399,37 @@
         if (board[index]) return;
 
         board[index] = role;
+
         const winner = winningMark(board);
 
         room.board = board;
         room.lastMove = index;
         room.winner = winner || null;
+
         room.status =
-          winner || board.every(Boolean) ? "finished" : "playing";
+          winner || board.every(Boolean)
+            ? "finished"
+            : "playing";
+
         room.turn = role === "X" ? "O" : "X";
 
         return room;
       });
 
       if (!result.committed) {
-        message(gameMessage, "Nước đi không được chấp nhận.", true);
+        message(
+          gameMessage,
+          "Nước đi không được chấp nhận.",
+          true
+        );
       }
 
     } catch (error) {
-      message(gameMessage, "Lỗi đánh: " + error.message, true);
+      message(
+        gameMessage,
+        "Lỗi đánh: " + error.message,
+        true
+      );
     }
   }
 
@@ -387,12 +437,20 @@
     if (!roomRef || !currentRoom) return;
 
     if (currentRoom.hostUid !== uid) {
-      message(gameMessage, "Chỉ chủ phòng mới được bắt đầu ván mới.", true);
+      message(
+        gameMessage,
+        "Chỉ chủ phòng mới được bắt đầu ván mới.",
+        true
+      );
       return;
     }
 
     if (!currentRoom.guestUid) {
-      message(gameMessage, "Đang chờ người chơi thứ hai.", true);
+      message(
+        gameMessage,
+        "Đang chờ người chơi thứ hai.",
+        true
+      );
       return;
     }
 
@@ -408,21 +466,27 @@
       message(gameMessage, "Đã bắt đầu ván mới.");
 
     } catch (error) {
-      message(gameMessage, "Lỗi bắt đầu ván: " + error.message, true);
+      message(
+        gameMessage,
+        "Lỗi bắt đầu ván: " + error.message,
+        true
+      );
     }
   }
 
   function leaveRoom() {
     stopListening();
+
     roomCode = null;
     currentRoom = null;
+
     showSetup();
     message(setupMessage, "Đã rời khỏi phòng.");
   }
 
-  // -------------------------------
+  // =================================
   // LIVE HOST CENTER
-  // -------------------------------
+  // =================================
 
   function isHost() {
     return uid === HOST_UID;
@@ -460,8 +524,27 @@
     };
 
     queueRef.on("value", queueListener, error => {
-      message($("liveHostMessage"), "Lỗi hàng chờ: " + error.message, true);
+      message(
+        $("liveHostMessage"),
+        "Lỗi hàng chờ: " + error.message,
+        true
+      );
     });
+  }
+
+  function getSortedQueue(data) {
+    return Object.entries(data || {})
+      .map(([key, value]) => ({ key, ...value }))
+      .filter(item =>
+        item &&
+        item.name &&
+        Number(item.giftValue) > 0
+      )
+      .sort((a, b) =>
+        Number(b.giftValue) - Number(a.giftValue) ||
+        Number(a.receivedAt || 0) -
+        Number(b.receivedAt || 0)
+      );
   }
 
   function renderQueue(data) {
@@ -470,26 +553,25 @@
 
     if (!list || !count) return;
 
-    const entries = Object.entries(data)
-      .map(([key, value]) => ({ key, ...value }))
-      .filter(item => item && item.name && Number(item.giftValue) > 0)
-      .sort((a, b) =>
-        Number(b.giftValue) - Number(a.giftValue) ||
-        Number(a.receivedAt) - Number(b.receivedAt)
-      );
+    const entries = getSortedQueue(data);
 
     count.textContent = entries.length + " người";
     list.innerHTML = "";
 
     if (!entries.length) {
-      list.innerHTML = '<p class="hint">Chưa có người đăng ký.</p>';
+      list.innerHTML =
+        '<p class="hint">Chưa có người đăng ký.</p>';
       return;
     }
 
     entries.forEach((item, index) => {
       const row = document.createElement("div");
+
       row.style.cssText =
-        "display:flex;align-items:center;gap:9px;padding:11px;margin-bottom:8px;border:1px solid #30425a;border-radius:12px;background:#0c1625";
+        "display:flex;align-items:center;gap:9px;" +
+        "padding:11px;margin-bottom:8px;" +
+        "border:1px solid #30425a;border-radius:12px;" +
+        "background:#0c1625";
 
       const rank = document.createElement("strong");
       rank.textContent = "#" + (index + 1);
@@ -504,14 +586,19 @@
       name.style.display = "block";
 
       const detail = document.createElement("small");
-      detail.textContent = "Quà " + item.giftValue + " xu";
+      detail.textContent =
+        "Quà " + item.giftValue + " xu";
+
       info.append(name, detail);
 
       const remove = document.createElement("button");
       remove.textContent = "×";
       remove.className = "secondary";
       remove.style.padding = "7px 11px";
-      remove.addEventListener("click", () => removeQueueItem(item.key));
+
+      remove.addEventListener("click", () => {
+        removeQueueItem(item.key);
+      });
 
       row.append(rank, info, remove);
       list.appendChild(row);
@@ -519,21 +606,42 @@
   }
 
   async function addQueueItem() {
-    if (!isHost()) return;
+    if (!isHost() || !db) return;
 
     const nameInput = $("queuePlayerName");
     const valueInput = $("queueGiftValue");
+
+    if (!nameInput || !valueInput) {
+      message(
+        $("liveHostMessage"),
+        "Thiếu ô nhập hàng chờ trong HTML.",
+        true
+      );
+      return;
+    }
 
     const name = nameInput.value.trim().slice(0, 30);
     const giftValue = Number(valueInput.value);
 
     if (!name) {
-      message($("liveHostMessage"), "Hãy nhập tên TikTok.", true);
+      message(
+        $("liveHostMessage"),
+        "Hãy nhập tên TikTok.",
+        true
+      );
       return;
     }
 
-    if (!Number.isSafeInteger(giftValue) || giftValue < 1 || giftValue > 1000000) {
-      message($("liveHostMessage"), "Giá trị quà không hợp lệ.", true);
+    if (
+      !Number.isSafeInteger(giftValue) ||
+      giftValue < 1 ||
+      giftValue > 1000000
+    ) {
+      message(
+        $("liveHostMessage"),
+        "Giá trị quà không hợp lệ.",
+        true
+      );
       return;
     }
 
@@ -550,94 +658,199 @@
       nameInput.value = "";
       valueInput.value = "";
 
-      message($("liveHostMessage"), "Đã thêm " + name + " vào hàng chờ.");
+      message(
+        $("liveHostMessage"),
+        "Đã thêm " + name + " vào hàng chờ."
+      );
 
     } catch (error) {
-      message($("liveHostMessage"), "Không thể thêm: " + error.message, true);
+      message(
+        $("liveHostMessage"),
+        "Không thể thêm: " + error.message,
+        true
+      );
     }
   }
 
   async function removeQueueItem(key) {
-    if (!isHost()) return;
+    if (!isHost() || !db) return;
 
     try {
       await db.ref("liveQueue/" + key).remove();
-      message($("liveHostMessage"), "Đã xóa người chơi khỏi hàng chờ.");
+
+      message(
+        $("liveHostMessage"),
+        "Đã xóa người chơi khỏi hàng chờ."
+      );
+
     } catch (error) {
-      message($("liveHostMessage"), "Lỗi xóa: " + error.message, true);
+      message(
+        $("liveHostMessage"),
+        "Lỗi xóa: " + error.message,
+        true
+      );
     }
   }
 
   async function queueSkip() {
-    if (!isHost()) return;
+    if (!isHost() || !db) return;
 
-    const snapshot = await db.ref("liveQueue").once("value");
-    const data = snapshot.val() || {};
+    try {
+      const snapshot = await db.ref("liveQueue").once("value");
+      const entries = getSortedQueue(snapshot.val());
 
-    const entries = Object.entries(data)
-      .map(([key, value]) => ({ key, ...value }))
-      .filter(item => item && item.name && Number(item.giftValue) > 0)
-      .sort((a, b) =>
-        Number(b.giftValue) - Number(a.giftValue) ||
-        Number(a.receivedAt) - Number(b.receivedAt)
+      if (!entries.length) {
+        message(
+          $("liveHostMessage"),
+          "Hàng chờ đang trống."
+        );
+        return;
+      }
+
+      await removeQueueItem(entries[0].key);
+
+    } catch (error) {
+      message(
+        $("liveHostMessage"),
+        "Lỗi bỏ qua: " + error.message,
+        true
       );
-
-    if (!entries.length) {
-      message($("liveHostMessage"), "Hàng chờ đang trống.");
-      return;
     }
-
-    await removeQueueItem(entries[0].key);
   }
 
+  // Tạo phòng Caro cho người đứng đầu hàng chờ
+  async function createRoomForQueue(selectedName) {
+    playerName = getName();
+
+    let code = null;
+    let ref = null;
+
+    for (let i = 0; i < 10; i++) {
+      const candidate = makeCode();
+      const candidateRef = db.ref("games/" + candidate);
+      const snapshot = await candidateRef.once("value");
+
+      if (!snapshot.exists()) {
+        code = candidate;
+        ref = candidateRef;
+        break;
+      }
+    }
+
+    if (!ref) {
+      throw new Error("Không tạo được mã phòng. Hãy thử lại.");
+    }
+
+    await ref.set({
+      hostUid: uid,
+      hostName: playerName,
+      guestName: "Đang chờ " + selectedName,
+      invitedName: selectedName,
+      board: emptyBoard(),
+      turn: "X",
+      status: "waiting",
+      winner: null,
+      createdAt: firebase.database.ServerValue.TIMESTAMP
+    });
+
+    await connectRoom(code);
+
+    return code;
+  }
+
+  // Chọn người ưu tiên và tạo phòng tự động
   async function queueNext() {
-    if (!isHost()) return;
+    if (!isHost() || !db) return;
 
-    const snapshot = await db.ref("liveQueue").once("value");
-    const data = snapshot.val() || {};
-
-    const entries = Object.entries(data)
-      .map(([key, value]) => ({ key, ...value }))
-      .filter(item => item && item.name && Number(item.giftValue) > 0)
-      .sort((a, b) =>
-        Number(b.giftValue) - Number(a.giftValue) ||
-        Number(a.receivedAt) - Number(b.receivedAt)
+    if (busy) {
+      message(
+        $("liveHostMessage"),
+        "Đang xử lý thao tác khác. Vui lòng đợi."
       );
-
-    if (!entries.length) {
-      message($("liveHostMessage"), "Chưa có người chơi trong hàng chờ.");
       return;
     }
 
-    const selected = entries[0];
+    busy = true;
 
-    message(
-      $("liveHostMessage"),
-      "Đã chọn " + selected.name + " · Quà " +
-      selected.giftValue + " xu. Hãy tạo phòng và gửi mã cho người chơi."
-    );
+    try {
+      const snapshot = await db.ref("liveQueue").once("value");
+      const entries = getSortedQueue(snapshot.val());
 
-    await removeQueueItem(selected.key);
+      if (!entries.length) {
+        message(
+          $("liveHostMessage"),
+          "Chưa có người chơi trong hàng chờ."
+        );
+        return;
+      }
+
+      const selected = entries[0];
+
+      message(
+        $("liveHostMessage"),
+        "Đang tạo phòng cho " + selected.name + "..."
+      );
+
+      const code = await createRoomForQueue(selected.name);
+
+      // Chỉ xóa người khỏi hàng chờ sau khi tạo phòng thành công
+      await db.ref("liveQueue/" + selected.key).remove();
+
+      message(
+        gameMessage,
+        "Đã tạo phòng " + code +
+        " cho " + selected.name +
+        ". Gửi mã phòng để người chơi tham gia."
+      );
+
+      message(
+        $("liveHostMessage"),
+        "Đã chọn " + selected.name +
+        ". Phòng " + code + " đã sẵn sàng."
+      );
+
+    } catch (error) {
+      message(
+        $("liveHostMessage"),
+        "Lỗi chọn người chơi: " + error.message,
+        true
+      );
+    } finally {
+      busy = false;
+    }
   }
 
   function bindHostControls() {
     if (!isHost()) return;
 
-    $("queueAddBtn")?.addEventListener("click", addQueueItem);
-    $("queueSkipBtn")?.addEventListener("click", queueSkip);
-    $("queueNextBtn")?.addEventListener("click", queueNext);
+    $("queueAddBtn")?.addEventListener(
+      "click",
+      addQueueItem
+    );
+
+    $("queueSkipBtn")?.addEventListener(
+      "click",
+      queueSkip
+    );
+
+    $("queueNextBtn")?.addEventListener(
+      "click",
+      queueNext
+    );
   }
 
-  // -------------------------------
+  // =================================
   // FIREBASE INITIALIZATION
-  // -------------------------------
+  // =================================
 
   async function init() {
     try {
       const config = window.firebaseConfig;
 
       if (!config || !config.apiKey || !config.appId) {
-        throw new Error("Thiếu Firebase apiKey hoặc appId.");
+        throw new Error(
+          "Thiếu Firebase apiKey hoặc appId."
+        );
       }
 
       if (typeof firebase === "undefined") {
@@ -656,7 +869,9 @@
       const user = auth.currentUser;
 
       if (!user) {
-        throw new Error("Không lấy được tài khoản Firebase.");
+        throw new Error(
+          "Không lấy được tài khoản Firebase."
+        );
       }
 
       uid = user.uid;
@@ -664,20 +879,36 @@
       $("createBtn").disabled = false;
       $("joinBtn").disabled = false;
 
-      message(setupMessage, "Đã kết nối Firebase. Tạo phòng để bắt đầu.");
+      message(
+        setupMessage,
+        "Đã kết nối Firebase. Tạo phòng để bắt đầu."
+      );
 
       if (isHost()) {
         showHostPanel();
         bindHostControls();
-        message($("liveHostMessage"), "Đã xác thực HOST.");
+
+        message(
+          $("liveHostMessage"),
+          "Đã xác thực HOST."
+        );
+
       } else if (liveHostPanel) {
         liveHostPanel.classList.add("hidden");
       }
 
     } catch (error) {
-      message(setupMessage, "Lỗi kết nối Firebase: " + error.message, true);
+      message(
+        setupMessage,
+        "Lỗi kết nối Firebase: " + error.message,
+        true
+      );
     }
   }
+
+  // =================================
+  // CHECK HTML ELEMENTS
+  // =================================
 
   const requiredIds = [
     "setupPanel",
@@ -703,35 +934,10 @@
   const missing = requiredIds.filter(id => !$(id));
 
   if (missing.length) {
-    console.error("CARO: Thiếu thành phần HTML:", missing);
-    message(setupMessage, "Lỗi giao diện: thiếu ID " + missing.join(", "), true);
-    return;
-  }
+    console.error(
+      "CARO: Thiếu thành phần HTML:",
+      missing
+    );
 
-  $("createBtn").addEventListener("click", createRoom);
-  $("joinBtn").addEventListener("click", joinRoom);
-  $("restartBtn").addEventListener("click", restart);
-  $("backBtn").addEventListener("click", leaveRoom);
-
-  $("copyBtn").addEventListener("click", async () => {
-    if (!roomCode) return;
-
-    try {
-      await navigator.clipboard.writeText(roomCode);
-      message(gameMessage, "Đã sao chép mã phòng " + roomCode);
-    } catch {
-      message(gameMessage, "Mã phòng: " + roomCode);
-    }
-  });
-
-  $("roomInput").addEventListener("input", event => {
-    event.target.value = event.target.value
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 6);
-  });
-
-  init();
-
-})();
+    message(
       
