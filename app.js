@@ -1,73 +1,104 @@
 
 (() => {
-  const $ = (id) => document.getElementById(id);
+  "use strict";
+
+  // CARO LIVE ARENA - APP VERSION 12
+
+  const $ = id => document.getElementById(id);
+
+  const SIZE = 15;
+  const TOTAL = SIZE * SIZE;
+
+  let db = null;
+  let auth = null;
+  let uid = null;
+
+  let roomRef = null;
+  let roomCode = null;
+  let roomListener = null;
+  let currentRoom = null;
+  let playerName = "Người chơi";
+  let busy = false;
 
   const setupPanel = $("setupPanel");
   const gamePanel = $("gamePanel");
   const setupMessage = $("setupMessage");
   const gameMessage = $("gameMessage");
 
-  const SIZE = 15;
-  const TOTAL = SIZE * SIZE;
-
-  let auth, db, uid = null;
-  let roomRef = null;
-  let roomCode = null;
-  let unsubscribe = null;
-  let currentRoom = null;
-  let playerName = "Người chơi";
-
   function message(el, text, error = false) {
+    if (!el) return;
     el.textContent = text;
-    el.style.color = error ? "#ff9b9b" : "";
-  }
-
-  function makeCode() {
-    return Math.random().toString(36).slice(2, 8).toUpperCase();
-  }
-
-  function showGame() {
-    setupPanel.classList.add("hidden");
-    gamePanel.classList.remove("hidden");
+    el.style.color = error ? "#ff7777" : "";
   }
 
   function showSetup() {
-    gamePanel.classList.add("hidden");
-    setupPanel.classList.remove("hidden");
+    if (gamePanel) gamePanel.classList.add("hidden");
+    if (setupPanel) setupPanel.classList.remove("hidden");
+  }
+
+  function showGame() {
+    if (setupPanel) setupPanel.classList.add("hidden");
+    if (gamePanel) gamePanel.classList.remove("hidden");
   }
 
   function getName() {
-    return $("playerName").value.trim().slice(0, 18) || "Người chơi";
+    const input = $("playerName");
+    return input && input.value.trim()
+      ? input.value.trim().slice(0, 18)
+      : "Người chơi";
+  }
+
+  function makeCode() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+
+    return code;
   }
 
   function getRole(room) {
+    if (!room || !uid) return null;
     if (room.hostUid === uid) return "X";
     if (room.guestUid === uid) return "O";
     return null;
   }
 
+  function emptyBoard() {
+    return Array(TOTAL).fill("");
+  }
+
   function winningMark(board) {
-    const dirs = [[1,0], [0,1], [1,1], [1,-1]];
+    const directions = [
+      [1, 0],
+      [0, 1],
+      [1, 1],
+      [1, -1]
+    ];
 
     for (let i = 0; i < TOTAL; i++) {
       const mark = board[i];
       if (!mark) continue;
 
-      const r = Math.floor(i / SIZE);
-      const c = i % SIZE;
+      const row = Math.floor(i / SIZE);
+      const col = i % SIZE;
 
-      for (const [dr, dc] of dirs) {
+      for (const [dr, dc] of directions) {
         let count = 1;
 
         for (let k = 1; k < 5; k++) {
-          const nr = r + dr * k;
-          const nc = c + dc * k;
+          const r = row + dr * k;
+          const c = col + dc * k;
 
           if (
-            nr < 0 || nr >= SIZE ||
-            nc < 0 || nc >= SIZE ||
-            board[nr * SIZE + nc] !== mark
-          ) break;
+            r < 0 || r >= SIZE ||
+            c < 0 || c >= SIZE ||
+            board[r * SIZE + c] !== mark
+          ) {
+            break;
+          }
 
           count++;
         }
@@ -77,6 +108,15 @@
     }
 
     return null;
+  }
+
+  function stopListening() {
+    if (roomRef && roomListener) {
+      roomRef.off("value", roomListener);
+    }
+
+    roomListener = null;
+    roomRef = null;
   }
 
   function render(room) {
@@ -103,24 +143,18 @@
 
     const board = Array.isArray(room.board)
       ? room.board
-      : Array(TOTAL).fill("");
+      : emptyBoard();
 
     board.forEach((mark, index) => {
       const cell = document.createElement("button");
 
+      cell.type = "button";
       cell.className = "cell" + (mark ? " " + mark.toLowerCase() : "");
+      cell.textContent = mark || "";
 
       if (room.lastMove === index) {
         cell.classList.add("last");
       }
-
-      cell.textContent = mark || "";
-      cell.type = "button";
-
-      cell.setAttribute(
-        "aria-label",
-        `Ô ${index + 1}: ${mark || "trống"}`
-      );
 
       cell.disabled =
         !role ||
@@ -135,54 +169,49 @@
 
     if (room.status === "waiting") {
       $("statusBar").textContent = "ĐANG CHỜ NGƯỜI CHƠI THỨ HAI";
+      message(gameMessage, "Gửi mã phòng " + roomCode + " cho đối thủ.");
+      return;
+    }
 
-      message(
-        gameMessage,
-        "Gửi mã phòng " + roomCode + " cho bạn bè để họ tham gia."
-      );
-
-    } else if (room.status === "finished") {
+    if (room.status === "finished") {
       $("statusBar").textContent = room.winner
-        ? `QUÂN ${room.winner} CHIẾN THẮNG!`
+        ? "QUÂN " + room.winner + " CHIẾN THẮNG!"
         : "VÁN ĐẤU HÒA";
 
-      message(gameMessage, "Nhấn Chơi ván mới để bắt đầu lại.");
-
-    } else {
-      $("statusBar").textContent =
-        room.turn === role
-          ? "ĐẾN LƯỢT CỦA ANH"
-          : `ĐANG ĐỢI QUÂN ${room.turn} ĐÁNH`;
-
-      message(
-        gameMessage,
-        role
-          ? `Anh đang chơi quân ${role}.`
-          : "Anh không thuộc phòng đấu này.",
-        !role
-      );
+      message(gameMessage, "Nhấn Chơi ván mới để tiếp tục.");
+      return;
     }
+
+    $("statusBar").textContent =
+      room.turn === role
+        ? "ĐẾN LƯỢT CỦA ANH"
+        : "ĐANG ĐỢI QUÂN " + room.turn + " ĐÁNH";
+
+    message(
+      gameMessage,
+      role
+        ? "Anh đang chơi quân " + role + "."
+        : "Tài khoản này không thuộc phòng đấu.",
+      !role
+    );
   }
 
   async function connectRoom(code) {
-    // Hủy listener phòng cũ trước khi chuyển phòng
-    if (roomRef && unsubscribe) {
-      roomRef.off("value", unsubscribe);
-    }
+    stopListening();
 
     roomCode = code;
     roomRef = db.ref("games/" + code);
 
-    unsubscribe = (snap) => {
-      if (!snap.exists()) {
+    roomListener = snapshot => {
+      if (!snapshot.exists()) {
         message(gameMessage, "Phòng không còn tồn tại.", true);
         return;
       }
 
-      const room = snap.val();
+      const room = snapshot.val();
 
       if (room.hostUid !== uid && room.guestUid !== uid) {
-        message(gameMessage, "Tài khoản này không thuộc phòng đấu.", true);
+        message(gameMessage, "Tài khoản không thuộc phòng này.", true);
         return;
       }
 
@@ -191,108 +220,152 @@
 
     roomRef.on(
       "value",
-      unsubscribe,
-      (err) => message(gameMessage, err.message, true)
+      roomListener,
+      error => {
+        message(gameMessage, "Lỗi đọc phòng: " + error.message, true);
+      }
     );
 
     showGame();
   }
 
   async function createRoom() {
+    if (busy) return;
+    if (!uid || !db) {
+      message(setupMessage, "Firebase chưa kết nối.", true);
+      return;
+    }
+
+    busy = true;
     playerName = getName();
 
     message(setupMessage, "Đang tạo phòng...");
 
     try {
-      let code;
-      let ref;
-      let exists = true;
+      let code = null;
+      let ref = null;
 
-      for (let tries = 0; tries < 8 && exists; tries++) {
-        code = makeCode();
-        ref = db.ref("games/" + code);
+      for (let i = 0; i < 10; i++) {
+        const candidate = makeCode();
+        const candidateRef = db.ref("games/" + candidate);
+        const snapshot = await candidateRef.once("value");
 
-        const snap = await ref.once("value");
-        exists = snap.exists();
+        if (!snapshot.exists()) {
+          code = candidate;
+          ref = candidateRef;
+          break;
+        }
       }
 
-      if (exists) {
-        throw new Error("Không tạo được mã phòng. Anh thử lại.");
+      if (!ref) {
+        throw new Error("Không tạo được mã phòng. Hãy thử lại.");
       }
-
-      const board = Array(TOTAL).fill("");
 
       await ref.set({
         hostUid: uid,
         hostName: playerName,
-        guestUid: null,
-        guestName: null,
-        board: board,
+        board: emptyBoard(),
         turn: "X",
         status: "waiting",
-        winner: null,
-        lastMove: null,
         createdAt: firebase.database.ServerValue.TIMESTAMP
       });
 
       await connectRoom(code);
 
-    } catch (e) {
-      message(setupMessage, "Lỗi tạo phòng: " + e.message, true);
+      message(gameMessage, "Đã tạo phòng " + code + ". Gửi mã cho đối thủ.");
+
+    } catch (error) {
+      message(
+        setupMessage,
+        "Lỗi tạo phòng: " + error.message,
+        true
+      );
+    } finally {
+      busy = false;
     }
   }
 
-  
-async function joinRoom() {
-  playerName = getName();
-
-  const code = $("roomInput").value.trim().toUpperCase();
-
-  if (!/^[A-Z0-9]{6}$/.test(code)) {
-    message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
-    return;
-  }
-
-  message(setupMessage, "Đang kiểm tra phòng...");
-
-  const ref = db.ref("games/" + code);
-
-  try {
-    const snap = await ref.once("value");
-
-    if (!snap.exists()) {
-      throw new Error("Không tìm thấy phòng " + code);
+  async function joinRoom() {
+    if (busy) return;
+    if (!uid || !db) {
+      message(setupMessage, "Firebase chưa kết nối.", true);
+      return;
     }
 
-    const room = snap.val();
+    playerName = getName();
 
-    if (room.hostUid === uid) {
-      throw new Error("Hai máy đang dùng cùng tài khoản.");
+    const input = $("roomInput");
+    const code = input.value.trim().toUpperCase();
+
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+      message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
+      return;
     }
 
-    if (room.status !== "waiting") {
-      throw new Error("Phòng không ở trạng thái chờ.");
+    busy = true;
+    message(setupMessage, "Đang tìm phòng " + code + "...");
+
+    try {
+      const ref = db.ref("games/" + code);
+
+      // Đọc dữ liệu phòng trực tiếp từ máy chủ
+      const snapshot = await ref.once("value");
+
+      if (!snapshot.exists()) {
+        throw new Error("Không tìm thấy phòng " + code + ".");
+      }
+
+      const room = snapshot.val();
+
+      if (room.hostUid === uid) {
+        throw new Error("Máy này đang dùng cùng tài khoản với chủ phòng.");
+      }
+
+      if (room.status !== "waiting") {
+        throw new Error("Phòng không còn ở trạng thái chờ.");
+      }
+
+      if (room.guestUid) {
+        throw new Error("Phòng đã có người chơi thứ hai.");
+      }
+
+      message(setupMessage, "Đang xác nhận tham gia...");
+
+      // Ghi thông tin người chơi thứ hai
+      await ref.update({
+        guestUid: uid,
+        guestName: playerName,
+        status: "playing"
+      });
+
+      // Đọc lại để xác nhận máy chủ đã nhận dữ liệu
+      const verifySnapshot = await ref.once("value");
+
+      if (!verifySnapshot.exists()) {
+        throw new Error("Không đọc lại được dữ liệu phòng sau khi tham gia.");
+      }
+
+      const updatedRoom = verifySnapshot.val();
+
+      if (updatedRoom.guestUid !== uid) {
+        throw new Error(
+          "Máy chủ chưa ghi nhận tài khoản của anh vào phòng."
+        );
+      }
+
+      await connectRoom(code);
+
+      message(gameMessage, "Tham gia phòng thành công. Anh chơi quân O.");
+
+    } catch (error) {
+      message(
+        setupMessage,
+        "Lỗi tham gia: " + error.message,
+        true
+      );
+    } finally {
+      busy = false;
     }
-
-    if (room.guestUid) {
-      throw new Error("Phòng đã có người tham gia.");
-    }
-
-    message(setupMessage, "Đang tham gia phòng...");
-
-    await ref.update({
-      guestUid: uid,
-      guestName: playerName,
-      status: "playing"
-    });
-
-    await connectRoom(code);
-
-  } catch (e) {
-    message(setupMessage, "Lỗi tham gia: " + e.message, true);
-  }
-}
-
   }
 
   async function play(index) {
@@ -300,20 +373,19 @@ async function joinRoom() {
 
     const role = getRole(currentRoom);
 
+    if (!role || currentRoom.status !== "playing") return;
+
     try {
-      await roomRef.transaction(room => {
-        if (
-          !room ||
-          room.status !== "playing" ||
-          room.turn !== role ||
-          room.board[index]
-        ) {
-          return;
-        }
+      const result = await roomRef.transaction(room => {
+        if (!room || room.status !== "playing") return;
+
+        if (room.turn !== role) return;
 
         const board = Array.isArray(room.board)
           ? room.board.slice()
-          : Array(TOTAL).fill("");
+          : emptyBoard();
+
+        if (board[index]) return;
 
         board[index] = role;
 
@@ -323,9 +395,8 @@ async function joinRoom() {
         room.lastMove = index;
         room.winner = winner || null;
 
-        room.status = winner
-          ? "finished"
-          : board.every(Boolean)
+        room.status =
+          winner || board.every(Boolean)
             ? "finished"
             : "playing";
 
@@ -334,137 +405,158 @@ async function joinRoom() {
         return room;
       });
 
-    } catch (e) {
-      message(gameMessage, "Không thể đánh: " + e.message, true);
+      if (!result.committed) {
+        message(gameMessage, "Nước đi không được chấp nhận.", true);
+      }
+
+    } catch (error) {
+      message(gameMessage, "Lỗi đánh: " + error.message, true);
     }
   }
 
   async function restart() {
-    if (
-      !roomRef ||
-      !currentRoom ||
-      currentRoom.hostUid !== uid
-    ) {
-      message(
-        gameMessage,
-        "Chỉ chủ phòng mới có thể bắt đầu ván mới.",
-        true
-      );
+    if (!roomRef || !currentRoom) return;
+
+    if (currentRoom.hostUid !== uid) {
+      message(gameMessage, "Chỉ chủ phòng mới được bắt đầu ván mới.", true);
+      return;
+    }
+
+    if (!currentRoom.guestUid) {
+      message(gameMessage, "Đang chờ người chơi thứ hai.", true);
       return;
     }
 
     try {
-      await roomRef.transaction(room => {
-        if (!room || room.hostUid !== uid || !room.guestUid) {
-          return;
-        }
-
-        room.board = Array(TOTAL).fill("");
-        room.turn = "X";
-        room.status = "playing";
-        room.winner = null;
-        room.lastMove = null;
-
-        return room;
+      await roomRef.update({
+        board: emptyBoard(),
+        turn: "X",
+        status: "playing",
+        winner: null,
+        lastMove: null
       });
 
-    } catch (e) {
-      message(gameMessage, "Không thể bắt đầu ván mới: " + e.message, true);
+      message(gameMessage, "Đã bắt đầu ván mới.");
+
+    } catch (error) {
+      message(gameMessage, "Lỗi bắt đầu ván: " + error.message, true);
     }
   }
 
   function leaveRoom() {
-    if (roomRef && unsubscribe) {
-      roomRef.off("value", unsubscribe);
-    }
+    stopListening();
 
-    roomRef = null;
-    unsubscribe = null;
     roomCode = null;
     currentRoom = null;
 
     showSetup();
 
-    message(
-      setupMessage,
-      "Anh đã rời màn hình phòng. Dữ liệu phòng vẫn còn trên máy chủ."
-    );
+    message(setupMessage, "Đã rời khỏi phòng.");
   }
 
   async function init() {
     try {
       const config = window.firebaseConfig;
 
-      if (
-        !config ||
-        !config.apiKey ||
-        !config.appId ||
-        config.apiKey.includes("PASTE_")
-      ) {
-        throw new Error(
-          "Chưa điền Firebase apiKey và appId trong firebase-config.js."
-        );
+      if (!config || !config.apiKey || !config.appId) {
+        throw new Error("Thiếu Firebase apiKey hoặc appId.");
       }
 
-      firebase.initializeApp(config);
+      if (typeof firebase === "undefined") {
+        throw new Error("Chưa tải Firebase SDK.");
+      }
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(config);
+      }
 
       auth = firebase.auth();
       db = firebase.database();
 
-      const credential = await auth.signInAnonymously();
+      await auth.signInAnonymously();
 
-      uid = credential.user.uid;
+      const user = auth.currentUser;
+
+      if (!user) {
+        throw new Error("Không lấy được tài khoản Firebase.");
+      }
+
+      uid = user.uid;
 
       $("createBtn").disabled = false;
+      $("joinBtn").disabled = false;
 
       message(
         setupMessage,
         "Đã kết nối Firebase. Tạo phòng để bắt đầu."
       );
 
-    } catch (e) {
+    } catch (error) {
       message(
         setupMessage,
-        "Lỗi kết nối: " + e.message,
+        "Lỗi kết nối Firebase: " + error.message,
         true
       );
     }
   }
 
-  $("createBtn").addEventListener("click", () => {
-    if (uid) createRoom();
-  });
+  // Kiểm tra các thành phần HTML
+  const requiredIds = [
+    "setupPanel",
+    "gamePanel",
+    "setupMessage",
+    "gameMessage",
+    "playerName",
+    "roomInput",
+    "createBtn",
+    "joinBtn",
+    "copyBtn",
+    "restartBtn",
+    "backBtn",
+    "roomCode",
+    "xName",
+    "oName",
+    "xCard",
+    "oCard",
+    "board",
+    "statusBar"
+  ];
 
-  $("joinBtn").addEventListener("click", () => {
-    if (uid) joinRoom();
-  });
+  const missing = requiredIds.filter(id => !$(id));
 
-  $("copyBtn").addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(roomCode);
+  if (missing.length) {
+    console.error("CARO: Thiếu thành phần HTML:", missing);
+    message(
+      setupMessage,
+      "Lỗi giao diện: thiếu ID " + missing.join(", "),
+      true
+    );
+    return;
+  }
 
-      message(
-        gameMessage,
-        "Đã sao chép mã phòng " + roomCode
-      );
-
-    } catch {
-      message(
-        gameMessage,
-        "Mã phòng của anh là " + roomCode
-      );
-    }
-  });
-
+  $("createBtn").addEventListener("click", createRoom);
+  $("joinBtn").addEventListener("click", joinRoom);
   $("restartBtn").addEventListener("click", restart);
   $("backBtn").addEventListener("click", leaveRoom);
 
-  $("roomInput").addEventListener("input", e => {
-    e.target.value = e.target.value
+  $("copyBtn").addEventListener("click", async () => {
+    if (!roomCode) return;
+
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      message(gameMessage, "Đã sao chép mã phòng " + roomCode);
+    } catch {
+      message(gameMessage, "Mã phòng: " + roomCode);
+    }
+  });
+
+  $("roomInput").addEventListener("input", event => {
+    event.target.value = event.target.value
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 6);
   });
 
   init();
+
 })();
