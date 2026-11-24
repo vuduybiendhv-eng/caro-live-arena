@@ -1,8 +1,7 @@
-
 (() => {
   "use strict";
 
-  // CARO LIVE ARENA - VERSION 14
+  // CARO LIVE ARENA - VERSION 15
   // CARO GAME + LIVE HOST + PRIORITY QUEUE + AUTO ROOM
 
   const $ = id => document.getElementById(id);
@@ -10,7 +9,7 @@
   const SIZE = 15;
   const TOTAL = SIZE * SIZE;
 
-  // UID HOST DUY NHẤT
+  // UID DUY NHẤT ĐƯỢC QUẢN LÝ LIVE HOST
   const HOST_UID = "F8pIRePt0cYnHSHWD4C4ZUzYgHe2";
 
   let db = null;
@@ -52,6 +51,7 @@
 
   function getName() {
     const input = $("playerName");
+
     return input && input.value.trim()
       ? input.value.trim().slice(0, 18)
       : "Người chơi";
@@ -117,6 +117,10 @@
     return null;
   }
 
+  // =================================
+  // ROOM LISTENER
+  // =================================
+
   function stopListening() {
     if (roomRef && roomListener) {
       roomRef.off("value", roomListener);
@@ -156,7 +160,9 @@
       const cell = document.createElement("button");
 
       cell.type = "button";
-      cell.className = "cell" + (mark ? " " + mark.toLowerCase() : "");
+      cell.className =
+        "cell" + (mark ? " " + mark.toLowerCase() : "");
+
       cell.textContent = mark || "";
 
       if (room.lastMove === index) {
@@ -170,15 +176,19 @@
         room.turn !== role;
 
       cell.addEventListener("click", () => play(index));
+
       boardEl.appendChild(cell);
     });
 
     if (room.status === "waiting") {
-      $("statusBar").textContent = "ĐANG CHỜ NGƯỜI CHƠI THỨ HAI";
+      $("statusBar").textContent =
+        "ĐANG CHỜ NGƯỜI CHƠI THỨ HAI";
+
       message(
         gameMessage,
         "Gửi mã phòng " + roomCode + " cho đối thủ."
       );
+
       return;
     }
 
@@ -187,7 +197,11 @@
         ? "QUÂN " + room.winner + " CHIẾN THẮNG!"
         : "VÁN ĐẤU HÒA";
 
-      message(gameMessage, "Nhấn Chơi ván mới để tiếp tục.");
+      message(
+        gameMessage,
+        "Nhấn Chơi ván mới để tiếp tục."
+      );
+
       return;
     }
 
@@ -213,14 +227,25 @@
 
     roomListener = snapshot => {
       if (!snapshot.exists()) {
-        message(gameMessage, "Phòng không còn tồn tại.", true);
+        message(
+          gameMessage,
+          "Phòng không còn tồn tại.",
+          true
+        );
         return;
       }
 
       const room = snapshot.val();
 
-      if (room.hostUid !== uid && room.guestUid !== uid) {
-        message(gameMessage, "Tài khoản không thuộc phòng này.", true);
+      if (
+        room.hostUid !== uid &&
+        room.guestUid !== uid
+      ) {
+        message(
+          gameMessage,
+          "Tài khoản không thuộc phòng này.",
+          true
+        );
         return;
       }
 
@@ -238,16 +263,25 @@
     showGame();
   }
 
+  // =================================
+  // CREATE ROOM
+  // =================================
+
   async function createRoom() {
     if (busy) return;
 
     if (!uid || !db) {
-      message(setupMessage, "Firebase chưa kết nối.", true);
+      message(
+        setupMessage,
+        "Firebase chưa kết nối.",
+        true
+      );
       return;
     }
 
     busy = true;
     playerName = getName();
+
     message(setupMessage, "Đang tạo phòng...");
 
     try {
@@ -267,7 +301,9 @@
       }
 
       if (!ref) {
-        throw new Error("Không tạo được mã phòng. Hãy thử lại.");
+        throw new Error(
+          "Không tạo được mã phòng. Hãy thử lại."
+        );
       }
 
       await ref.set({
@@ -298,11 +334,19 @@
     }
   }
 
+  // =================================
+  // JOIN ROOM
+  // =================================
+
   async function joinRoom() {
     if (busy) return;
 
     if (!uid || !db) {
-      message(setupMessage, "Firebase chưa kết nối.", true);
+      message(
+        setupMessage,
+        "Firebase chưa kết nối.",
+        true
+      );
       return;
     }
 
@@ -321,14 +365,20 @@
     }
 
     busy = true;
-    message(setupMessage, "Đang tìm phòng " + code + "...");
+
+    message(
+      setupMessage,
+      "Đang tìm phòng " + code + "..."
+    );
 
     try {
       const ref = db.ref("games/" + code);
       const snapshot = await ref.once("value");
 
       if (!snapshot.exists()) {
-        throw new Error("Không tìm thấy phòng " + code + ".");
+        throw new Error(
+          "Không tìm thấy phòng " + code + "."
+        );
       }
 
       const room = snapshot.val();
@@ -340,11 +390,15 @@
       }
 
       if (room.status !== "waiting") {
-        throw new Error("Phòng không còn ở trạng thái chờ.");
+        throw new Error(
+          "Phòng không còn ở trạng thái chờ."
+        );
       }
 
       if (room.guestUid) {
-        throw new Error("Phòng đã có người chơi thứ hai.");
+        throw new Error(
+          "Phòng đã có người chơi thứ hai."
+        );
       }
 
       await ref.update({
@@ -359,7 +413,9 @@
         !verifySnapshot.exists() ||
         verifySnapshot.val().guestUid !== uid
       ) {
-        throw new Error("Máy chủ chưa xác nhận tham gia.");
+        throw new Error(
+          "Máy chủ chưa xác nhận tham gia."
+        );
       }
 
       await connectRoom(code);
@@ -380,12 +436,19 @@
     }
   }
 
+  // =================================
+  // PLAY
+  // =================================
+
   async function play(index) {
     if (!roomRef || !currentRoom) return;
 
     const role = getRole(currentRoom);
 
-    if (!role || currentRoom.status !== "playing") return;
+    if (
+      !role ||
+      currentRoom.status !== "playing"
+    ) return;
 
     try {
       const result = await roomRef.transaction(room => {
@@ -433,6 +496,10 @@
     }
   }
 
+  // =================================
+  // RESTART
+  // =================================
+
   async function restart() {
     if (!roomRef || !currentRoom) return;
 
@@ -463,7 +530,10 @@
         lastMove: null
       });
 
-      message(gameMessage, "Đã bắt đầu ván mới.");
+      message(
+        gameMessage,
+        "Đã bắt đầu ván mới."
+      );
 
     } catch (error) {
       message(
@@ -474,6 +544,10 @@
     }
   }
 
+  // =================================
+  // LEAVE ROOM
+  // =================================
+
   function leaveRoom() {
     stopListening();
 
@@ -481,7 +555,11 @@
     currentRoom = null;
 
     showSetup();
-    message(setupMessage, "Đã rời khỏi phòng.");
+
+    message(
+      setupMessage,
+      "Đã rời khỏi phòng."
+    );
   }
 
   // =================================
@@ -492,17 +570,13 @@
     return uid === HOST_UID;
   }
 
-  function stopQueueListening() {
-    if (queueRef && queueListener) {
-      queueRef.off("value", queueListener);
-    }
-
-    queueListener = null;
-    queueRef = null;
-  }
-
   function showHostPanel() {
-    if (!liveHostPanel) return;
+    if (!liveHostPanel) {
+      console.error(
+        "Không tìm thấy liveHostPanel trong HTML."
+      );
+      return;
+    }
 
     if (!isHost()) {
       liveHostPanel.classList.add("hidden");
@@ -510,6 +584,10 @@
     }
 
     liveHostPanel.classList.remove("hidden");
+
+    // Đảm bảo bảng hiển thị nếu HTML có class ẩn
+    liveHostPanel.style.display = "block";
+
     startQueueListening();
   }
 
@@ -523,20 +601,26 @@
       renderQueue(data);
     };
 
-    queueRef.on("value", queueListener, error => {
-      message(
-        $("liveHostMessage"),
-        "Lỗi hàng chờ: " + error.message,
-        true
-      );
-    });
+    queueRef.on(
+      "value",
+      queueListener,
+      error => {
+        message(
+          $("liveHostMessage"),
+          "Lỗi hàng chờ: " + error.message,
+          true
+        );
+      }
+    );
   }
 
   function getSortedQueue(data) {
     return Object.entries(data || {})
-      .map(([key, value]) => ({ key, ...value }))
+      .map(([key, value]) => ({
+        key,
+        ...(value || {})
+      }))
       .filter(item =>
-        item &&
         item.name &&
         Number(item.giftValue) > 0
       )
@@ -592,6 +676,7 @@
       info.append(name, detail);
 
       const remove = document.createElement("button");
+      remove.type = "button";
       remove.textContent = "×";
       remove.className = "secondary";
       remove.style.padding = "7px 11px";
@@ -604,6 +689,10 @@
       list.appendChild(row);
     });
   }
+
+  // =================================
+  // ADD QUEUE
+  // =================================
 
   async function addQueueItem() {
     if (!isHost() || !db) return;
@@ -672,6 +761,10 @@
     }
   }
 
+  // =================================
+  // REMOVE QUEUE ITEM
+  // =================================
+
   async function removeQueueItem(key) {
     if (!isHost() || !db) return;
 
@@ -691,6 +784,10 @@
       );
     }
   }
+
+  // =================================
+  // SKIP QUEUE
+  // =================================
 
   async function queueSkip() {
     if (!isHost() || !db) return;
@@ -718,7 +815,10 @@
     }
   }
 
-  // Tạo phòng Caro cho người đứng đầu hàng chờ
+  // =================================
+  // CREATE ROOM FOR QUEUE PLAYER
+  // =================================
+
   async function createRoomForQueue(selectedName) {
     playerName = getName();
 
@@ -738,7 +838,9 @@
     }
 
     if (!ref) {
-      throw new Error("Không tạo được mã phòng. Hãy thử lại.");
+      throw new Error(
+        "Không tạo được mã phòng. Hãy thử lại."
+      );
     }
 
     await ref.set({
@@ -758,7 +860,10 @@
     return code;
   }
 
-  // Chọn người ưu tiên và tạo phòng tự động
+  // =================================
+  // SELECT NEXT PLAYER
+  // =================================
+
   async function queueNext() {
     if (!isHost() || !db) return;
 
@@ -793,7 +898,7 @@
 
       const code = await createRoomForQueue(selected.name);
 
-      // Chỉ xóa người khỏi hàng chờ sau khi tạo phòng thành công
+      // Chỉ xóa sau khi tạo phòng thành công
       await db.ref("liveQueue/" + selected.key).remove();
 
       message(
@@ -820,6 +925,10 @@
     }
   }
 
+  // =================================
+  // BIND HOST BUTTONS
+  // =================================
+
   function bindHostControls() {
     if (!isHost()) return;
 
@@ -840,104 +949,23 @@
   }
 
   // =================================
-  // FIREBASE INITIALIZATION
+  // BIND GAME BUTTONS
   // =================================
 
-  async function init() {
-    try {
-      const config = window.firebaseConfig;
-
-      if (!config || !config.apiKey || !config.appId) {
-        throw new Error(
-          "Thiếu Firebase apiKey hoặc appId."
-        );
-      }
-
-      if (typeof firebase === "undefined") {
-        throw new Error("Chưa tải Firebase SDK.");
-      }
-
-      if (!firebase.apps.length) {
-        firebase.initializeApp(config);
-      }
-
-      auth = firebase.auth();
-      db = firebase.database();
-
-      await auth.signInAnonymously();
-
-      const user = auth.currentUser;
-
-      if (!user) {
-        throw new Error(
-          "Không lấy được tài khoản Firebase."
-        );
-      }
-
-      uid = user.uid;
-
-      $("createBtn").disabled = false;
-      $("joinBtn").disabled = false;
-
-      message(
-        setupMessage,
-        "Đã kết nối Firebase. Tạo phòng để bắt đầu."
-      );
-
-      if (isHost()) {
-        showHostPanel();
-        bindHostControls();
-
-        message(
-          $("liveHostMessage"),
-          "Đã xác thực HOST."
-        );
-
-      } else if (liveHostPanel) {
-        liveHostPanel.classList.add("hidden");
-      }
-
-    } catch (error) {
-      message(
-        setupMessage,
-        "Lỗi kết nối Firebase: " + error.message,
-        true
-      );
-    }
-  }
-
-  // =================================
-  // CHECK HTML ELEMENTS
-  // =================================
-
-  const requiredIds = [
-    "setupPanel",
-    "gamePanel",
-    "setupMessage",
-    "gameMessage",
-    "playerName",
-    "roomInput",
-    "createBtn",
-    "joinBtn",
-    "copyBtn",
-    "restartBtn",
-    "backBtn",
-    "roomCode",
-    "xName",
-    "oName",
-    "xCard",
-    "oCard",
-    "board",
-    "statusBar"
-  ];
-
-  const missing = requiredIds.filter(id => !$(id));
-
-  if (missing.length) {
-    console.error(
-      "CARO: Thiếu thành phần HTML:",
-      missing
+  function bindGameControls() {
+    $("createBtn")?.addEventListener(
+      "click",
+      createRoom
     );
 
-    message(
-      
+    $("joinBtn")?.addEventListener(
+      "click",
+      joinRoom
+    );
+
+    $("restartBtn")?.addEventListener(
+      "click",
+      restart
+    );
+
+    $("backBtn")?.      
