@@ -968,4 +968,104 @@
       restart
     );
 
-    $("backBtn")?.      
+
+    $("backBtn")?.addEventListener(
+      "click",
+      leaveRoom
+    );
+  }
+
+  // =================================
+  // FIREBASE INITIALIZATION
+  // =================================
+
+  async function init() {
+    try {
+      message(
+        setupMessage,
+        "Đang kết nối Firebase..."
+      );
+
+      if (typeof firebase === "undefined") {
+        throw new Error(
+          "Chưa tải được Firebase SDK."
+        );
+      }
+
+      if (!window.firebaseConfig) {
+        throw new Error(
+          "Chưa có Firebase config."
+        );
+      }
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(
+          window.firebaseConfig
+        );
+      }
+
+      auth = firebase.auth();
+      db = firebase.database();
+
+      await auth.signInAnonymously();
+
+      uid = auth.currentUser.uid;
+
+      console.log("CARO LIVE ARENA VERSION 15");
+      console.log("CURRENT UID:", uid);
+      console.log("HOST UID:", HOST_UID);
+      console.log("IS HOST:", isHost());
+
+      // Hiển thị thông tin kiểm tra UID
+      message(
+        setupMessage,
+        "UID: " + uid +
+        " | Quyền HOST: " +
+        (isHost() ? "ĐÚNG" : "SAI")
+      );
+
+      // Liên kết các nút game
+      bindGameControls();
+
+      // Chỉ tài khoản HOST mới được quản lý LIVE
+      if (isHost()) {
+        showHostPanel();
+        bindHostControls();
+
+        message(
+          $("liveHostMessage"),
+          "Đã xác thực HOST. Bảng quản lý đã sẵn sàng."
+        );
+      } else {
+        if (liveHostPanel) {
+          liveHostPanel.classList.add("hidden");
+          liveHostPanel.style.display = "none";
+        }
+      }
+
+    } catch (error) {
+      console.error("CARO INIT ERROR:", error);
+
+      message(
+        setupMessage,
+        "Lỗi kết nối: " + error.message,
+        true
+      );
+    }
+  }
+
+  // =================================
+  // START APPLICATION
+  // =================================
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      init
+    );
+  } else {
+    init();
+  }
+
+})();
+
