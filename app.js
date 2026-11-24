@@ -10,7 +10,7 @@
   const SIZE = 15;
   const TOTAL = SIZE * SIZE;
 
-  const HOST_UID = "NFiHocrXdxV19KJdEg8mf1kUFl42";
+  const HOST_UID = "F8pIRePt0cYnHSHWD4C4ZUzYgHe2";
 
   let db = null;
   let auth = null;
