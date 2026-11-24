@@ -1,797 +1,311 @@
-
 (() => {
-  "use strict";
+"use strict";
 
-  // CARO LIVE ARENA - VERSION 18
-  // CARO + LIVE HOST + PRIORITY QUEUE + TIMER + ELO + LEADERBOARD
-  // EXPERIMENTAL CLIENT-SIDE VERSION
+/*
+ CARO LIVE ARENA V2
+ - Dùng namespace arenaV2 để không ghi đè dữ liệu games/liveHost/liveQueue cũ.
+ - HOST UID được xác nhận: FhBvb1ZyyeYBraKPJChgcpdoNHX2
+ - Firebase client config là public identifier; bảo mật phải nằm ở Firebase Rules.
+*/
 
-  const $ = id => document.getElementById(id);
-  const SIZE = 15;
-  const TOTAL = SIZE * SIZE;
-  const TURN_SECONDS = 30;
-  const HOST_UID = "NFiHocrXdxV19KJdEg8mf1kUFl42";
-  const LEADERBOARD_PATH = "games/_leaderboard";
+const firebaseConfig = {
+  apiKey: "AIzaSyA80_Us6qBYmgCOCVmN2zP5EhWFiL8AqH4",
+  authDomain: "caro-fight.firebaseapp.com",
+  databaseURL: "https://caro-fight-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "caro-fight",
+  storageBucket: "caro-fight.firebasestorage.app",
+  messagingSenderId: "209006748943",
+  appId: "1:209006748943:web:b1182aeaa8c4e4acd34a7a",
+  measurementId: "G-QYZPFB1GTY"
+};
 
-  let db = null;
-  let auth = null;
-  let uid = null;
+const HOST_UID = "FhBvb1ZyyeYBraKPJChgcpdoNHX2";
+const SIZE = 15;
+const WIN_COUNT = 5;
+const TURN_SECONDS = 30;
+const ROOT = "arenaV2";
+const $ = id => document.getElementById(id);
 
-  let roomRef = null;
-  let roomCode = null;
-  let roomListener = null;
-  let currentRoom = null;
+let auth, db, uid = null, playerName = "Người chơi";
+let activeCode = null, roomListener = null, chatListener = null, queueListener = null;
+let activeRoom = null, timerInterval = null, busy = false;
 
-  let playerName = "Người chơi";
-  let busy = false;
+function say(id, message, isError=false) {
+  const el = $(id); if (!el) return;
+  el.textContent = message;
+  el.style.color = isError ? "#b91c1c" : "";
+}
+function cleanName(s) { return String(s || "").trim().replace(/[<>]/g,"").slice(0,24); }
+function makeCode() { return Math.random().toString(36).slice(2,8).toUpperCase().padEnd(6,"A"); }
+function isHost() { return uid === HOST_UID; }
+function now() { return firebase.database.ServerValue.TIMESTAMP; }
+function boardEmpty() { return Array(SIZE*SIZE).fill(""); }
+function idx(r,c) { return r*SIZE+c; }
+function validBoard(b) { return Array.isArray(b) && b.length === SIZE*SIZE; }
 
-  let queueRef = null;
-  let queueListener = null;
-  let timerInterval = null;
-  let timeoutBusy = false;
-  let eloBusy = false;
-
-  const setupPanel = $("setupPanel");
-  const gamePanel = $("gamePanel");
-  const setupMessage = $("setupMessage");
-  const gameMessage = $("gameMessage");
-  const liveHostPanel = $("liveHostPanel");
-
-  function message(el, text, error = false) {
-    if (!el) return;
-    el.textContent = text;
-    el.style.color = error ? "#ff7777" : "";
-  }
-
-  function showSetup() {
-    if (gamePanel) gamePanel.classList.add("hidden");
-    if (setupPanel) setupPanel.classList.remove("hidden");
-  }
-
-  function showGame() {
-    if (setupPanel) setupPanel.classList.add("hidden");
-    if (gamePanel) gamePanel.classList.remove("hidden");
-  }
-
-  function getName() {
-    const input = $("playerName");
-    return input && input.value.trim()
-      ? input.value.trim().slice(0, 18)
-      : "Người chơi";
-  }
-
-  function makeCode() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return code;
-  }
-
-  function getRole(room) {
-    if (!room || !uid) return null;
-    if (room.hostUid === uid) return "X";
-    if (room.guestUid === uid) return "O";
-    return null;
-  }
-
-  function emptyBoard() {
-    return Array(TOTAL).fill("");
-  }
-
-  function winningMark(board) {
-    const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
-
-    for (let i = 0; i < TOTAL; i++) {
-      const mark = board[i];
-      if (!mark) continue;
-
-      const row = Math.floor(i / SIZE);
-      const col = i % SIZE;
-
-      for (const [dr, dc] of directions) {
-        let count = 1;
-
-        for (let k = 1; k < 5; k++) {
-          const r = row + dr * k;
-          const c = col + dc * k;
-
-          if (
-            r < 0 || r >= SIZE ||
-            c < 0 || c >= SIZE ||
-            board[r * SIZE + c] !== mark
-          ) break;
-
-          count++;
-        }
-
-        if (count >= 5) return mark;
+function hasWon(board, pos, mark) {
+  const r = Math.floor(pos/SIZE), c = pos%SIZE;
+  const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+  for (const [dr,dc] of dirs) {
+    let count = 1;
+    for (const sign of [-1,1]) {
+      let rr=r+dr*sign, cc=c+dc*sign;
+      while (rr>=0 && rr<SIZE && cc>=0 && cc<SIZE && board[idx(rr,cc)]===mark) {
+        count++; rr+=dr*sign; cc+=dc*sign;
       }
     }
-
-    return null;
+    if (count >= WIN_COUNT) return true;
   }
+  return false;
+}
 
-  // =================================
-  // V18 UI
-  // =================================
-
-  function createV18UI() {
-    if (!gamePanel) return;
-
-    if (!$("v18Timer")) {
-      const timer = document.createElement("div");
-      timer.id = "v18Timer";
-      timer.style.cssText =
-        "padding:12px;margin:10px 0;border-radius:12px;" +
-        "background:#14243a;color:#fff;text-align:center;" +
-        "font-size:20px;font-weight:bold;";
-      timer.textContent = "⏱ 30 giây";
-      gamePanel.insertBefore(timer, gamePanel.firstChild);
-    }
-
-    if (!$("v18Leaderboard")) {
-      const panel = document.createElement("div");
-      panel.id = "v18Leaderboard";
-      panel.style.cssText =
-        "padding:12px;margin:14px 0;border-radius:12px;" +
-        "background:#14243a;color:#fff;";
-
-      const title = document.createElement("h3");
-      title.textContent = "🏆 BẢNG XẾP HẠNG ELO";
-      title.style.margin = "0 0 10px";
-
-      const list = document.createElement("div");
-      list.id = "v18LeaderboardList";
-      list.textContent = "Đang tải bảng xếp hạng...";
-
-      panel.append(title, list);
-      gamePanel.appendChild(panel);
-    }
+async function init() {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth(); db = firebase.database();
+    auth.onAuthStateChanged(async user => {
+      if (!user) return;
+      uid = user.uid;
+      $("accountInfo").textContent = "UID: " + uid.slice(0,8) + "…";
+      $("playerName").value = localStorage.getItem("caroV2Name") || "";
+      playerName = cleanName($("playerName").value) || "Người chơi";
+      if (isHost()) $("hostPanel").classList.remove("hidden");
+      listenQueue();
+      $("connection").textContent = "Đã kết nối Firebase";
+      $("connection").style.background = "#dcfce7";
+      $("connection").style.color = "#166534";
+    });
+    await auth.signInAnonymously();
+  } catch (e) {
+    $("connection").textContent = "Lỗi kết nối";
+    say("roomMessage", "Không kết nối được Firebase: " + (e.message || e), true);
   }
+}
 
-  function updateTimerDisplay(seconds, status) {
-    const el = $("v18Timer");
-    if (!el) return;
+$("saveName").addEventListener("click", () => {
+  const name = cleanName($("playerName").value);
+  if (!name) return say("roomMessage","Anh hãy nhập tên hiển thị.",true);
+  playerName = name; localStorage.setItem("caroV2Name", name);
+  say("roomMessage","Đã lưu tên: " + name);
+});
 
-    if (status !== "playing") {
-      el.textContent = status === "finished"
-        ? "⏱ Ván đấu đã kết thúc"
-        : "⏱ Đang chờ đối thủ";
-      el.style.color = "#fff";
-      return;
-    }
-
-    el.textContent = "⏱ CÒN " + seconds + " GIÂY";
-    el.style.color = seconds <= 10 ? "#ff7777" : "#fff";
-  }
-
-  // =================================
-  // ROOM LISTENER
-  // =================================
-
-  function stopListening() {
-    if (roomRef && roomListener) {
-      roomRef.off("value", roomListener);
-    }
-
-    roomListener = null;
-    roomRef = null;
-  }
-
-  function render(room) {
-    currentRoom = room;
-    const role = getRole(room);
-
-    if ($("roomCode")) $("roomCode").textContent = roomCode || "------";
-    if ($("xName")) $("xName").textContent = room.hostName || "Chủ phòng";
-    if ($("oName")) $("oName").textContent = room.guestName || "Đang chờ đối thủ";
-
-    if ($("xCard")) {
-      $("xCard").classList.toggle(
-        "active",
-        room.turn === "X" && room.status === "playing"
-      );
-    }
-
-    if ($("oCard")) {
-      $("oCard").classList.toggle(
-        "active",
-        room.turn === "O" && room.status === "playing"
-      );
-    }
-
-    const boardEl = $("board");
-
-    if (boardEl) {
-      boardEl.innerHTML = "";
-
-      const board = Array.isArray(room.board)
-        ? room.board
-        : emptyBoard();
-
-      board.forEach((mark, index) => {
-        const cell = document.createElement("button");
-        cell.type = "button";
-        cell.className = "cell" + (mark ? " " + mark.toLowerCase() : "");
-        cell.textContent = mark || "";
-
-        if (room.lastMove === index) {
-          cell.classList.add("last");
-        }
-
-        cell.disabled =
-          !role ||
-          !!mark ||
-          room.status !== "playing" ||
-          room.turn !== role;
-
-        cell.addEventListener("click", () => play(index));
-        boardEl.appendChild(cell);
-      });
-    }
-
-    if (room.status === "waiting") {
-      if ($("statusBar")) {
-        $("statusBar").textContent = "ĐANG CHỜ NGƯỜI CHƠI THỨ HAI";
-      }
-
-      updateTimerDisplay(30, "waiting");
-      message(gameMessage, "Gửi mã phòng " + roomCode + " cho đối thủ.");
-      return;
-    }
-
-    if (room.status === "finished") {
-      if ($("statusBar")) {
-        $("statusBar").textContent = room.winner
-          ? "QUÂN " + room.winner + " CHIẾN THẮNG!"
-          : "VÁN ĐẤU HÒA";
-      }
-
-      updateTimerDisplay(0, "finished");
-
-      if (room.finishReason === "timeout") {
-        message(
-          gameMessage,
-          "Hết giờ! Quân " + room.winner + " chiến thắng."
-        );
-      } else {
-        message(gameMessage, "Ván đấu kết thúc. Nhấn Chơi ván mới để tiếp tục.");
-      }
-
-      applyEloOnce(room);
-      return;
-    }
-
-    if ($("statusBar")) {
-      $("statusBar").textContent =
-        room.turn === role
-          ? "ĐẾN LƯỢT CỦA ANH"
-          : "ĐANG ĐỢI QUÂN " + room.turn + " ĐÁNH";
-    }
-
-    message(
-      gameMessage,
-      role
-        ? "Anh đang chơi quân " + role + "."
-        : "Tài khoản này không thuộc phòng đấu.",
-      !role
-    );
-
-    refreshTimer();
-  }
-
-  async function connectRoom(code) {
-    stopListening();
-
-    roomCode = code;
-    roomRef = db.ref("games/" + code);
-
-    roomListener = snapshot => {
-      if (!snapshot.exists()) {
-        message(gameMessage, "Phòng không còn tồn tại.", true);
-        return;
-      }
-
-      const room = snapshot.val();
-
-      if (room.hostUid !== uid && room.guestUid !== uid) {
-        message(gameMessage, "Tài khoản không thuộc phòng này.", true);
-        return;
-      }
-
-      render(room);
+async function createRoom() {
+  if (!uid || busy) return;
+  busy = true;
+  try {
+    let code, ref, snap, tries=0;
+    do {
+      code = makeCode(); ref = db.ref(`${ROOT}/rooms/${code}`);
+      snap = await ref.once("value"); tries++;
+    } while (snap.exists() && tries<8);
+    if (snap.exists()) throw new Error("Không tạo được mã phòng mới. Anh thử lại.");
+    const room = {
+      code, status:"waiting", createdAt:now(), updatedAt:now(),
+      xUid:uid, xName:playerName, oUid:"", oName:"",
+      board:boardEmpty(), turn:"X", moves:0, winner:"",
+      turnStartedAt:now(), rematchRequestedBy:""
     };
+    await ref.set(room);
+    $("roomCode").value = code;
+    enterRoom(code);
+    say("roomMessage","Đã tạo phòng " + code + ". Gửi mã này cho người chơi X.");
+  } catch(e) { say("roomMessage","Tạo phòng thất bại: " + (e.message||e),true); }
+  finally { busy=false; }
+}
 
-    roomRef.on("value", roomListener, error => {
-      message(gameMessage, "Lỗi đọc phòng: " + error.message, true);
+async function joinRoom() {
+  const code = String($("roomCode").value||"").trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) return say("roomMessage","Mã phòng phải gồm 6 ký tự.",true);
+  if (!uid || busy) return;
+  busy=true;
+  try {
+    const ref = db.ref(`${ROOT}/rooms/${code}`);
+    let result = await ref.transaction(room => {
+      if (!room) return;
+      if (room.xUid === uid || room.oUid === uid) return room;
+      if (room.status !== "waiting" || room.oUid) return;
+      room.oUid = uid; room.oName = playerName;
+      room.status = "playing"; room.updatedAt = firebase.database.ServerValue.TIMESTAMP;
+      room.turnStartedAt = firebase.database.ServerValue.TIMESTAMP;
+      return room;
+    }, undefined, false);
+    if (!result.committed) throw new Error("Phòng không tồn tại hoặc đã đủ người.");
+    enterRoom(code);
+    say("roomMessage","Đã vào phòng " + code + ".");
+  } catch(e) { say("roomMessage","Không tham gia được: " + (e.message||e),true); }
+  finally { busy=false; }
+}
+
+function enterRoom(code) {
+  leaveRoom(false);
+  activeCode = code;
+  $("gamePanel").classList.remove("hidden");
+  $("copyInvite").disabled = false;
+  $("roomCode").value = code;
+  roomListener = db.ref(`${ROOT}/rooms/${code}`).on("value", snap => {
+    activeRoom = snap.val();
+    if (!activeRoom) { say("gameMessage","Phòng không còn tồn tại.",true); return; }
+    renderRoom();
+  }, err => say("gameMessage","Không đọc được phòng: "+err.message,true));
+  listenChat(code);
+}
+function leaveRoom(clearMessage=true) {
+  if (activeCode && roomListener) db.ref(`${ROOT}/rooms/${activeCode}`).off("value",roomListener);
+  if (activeCode && chatListener) db.ref(`${ROOT}/rooms/${activeCode}/chat`).off("value",chatListener);
+  activeCode=null; activeRoom=null; roomListener=null; chatListener=null;
+  if (timerInterval) clearInterval(timerInterval);
+  $("gamePanel").classList.add("hidden");
+  $("copyInvite").disabled=true;
+  $("chatInput").disabled=true; $("sendChat").disabled=true;
+  $("chatList").innerHTML='<p class="muted">Vào phòng để chat.</p>';
+  if (clearMessage) say("roomMessage","Đã rời phòng.");
+}
+function renderRoom() {
+  const r=activeRoom;
+  $("roomTitle").textContent="PHÒNG "+r.code;
+  $("players").textContent=`X: ${r.xName || "Đang chờ"}  ·  O: ${r.oName || "Đang chờ"}`;
+  $("turnBadge").textContent = r.winner ? "Kết thúc" : (r.status==="waiting" ? "Chờ người chơi" : "Lượt "+r.turn);
+  if (r.winner) say("gameMessage",r.winner==="DRAW"?"Ván đấu hòa.":`Người chơi ${r.winner} thắng!`);
+  else if (r.status==="waiting") say("gameMessage","Đang chờ người chơi thứ hai vào phòng.");
+  else say("gameMessage",`Đến lượt ${r.turn} · ${r.turn==="X"?r.xName:r.oName}`);
+  renderBoard();
+  $("chatInput").disabled=false; $("sendChat").disabled=false;
+}
+function renderBoard() {
+  const boardEl=$("board"); boardEl.innerHTML="";
+  if (!activeRoom || !validBoard(activeRoom.board)) return;
+  const mark = activeRoom.xUid===uid ? "X" : activeRoom.oUid===uid ? "O" : "";
+  for (let i=0;i<SIZE*SIZE;i++) {
+    const b=document.createElement("button");
+    const v=activeRoom.board[i]||"";
+    b.className="cell"+(v?" "+v.toLowerCase():"");
+    b.textContent=v;
+    b.setAttribute("aria-label",`Ô ${Math.floor(i/SIZE)+1}, ${i%SIZE+1} ${v}`);
+    b.disabled=!!v || activeRoom.status!=="playing" || !!activeRoom.winner || !mark || activeRoom.turn!==mark;
+    b.addEventListener("click",()=>playMove(i));
+    boardEl.appendChild(b);
+  }
+}
+async function playMove(pos) {
+  if (!activeCode || !uid) return;
+  const ref=db.ref(`${ROOT}/rooms/${activeCode}`);
+  try {
+    const result=await ref.transaction(room=>{
+      if (!room || room.status!=="playing" || room.winner || !validBoard(room.board)) return;
+      const mark=room.xUid===uid?"X":room.oUid===uid?"O":"";
+      if (!mark || room.turn!==mark || room.board[pos]) return;
+      room.board[pos]=mark;
+      room.moves=(room.moves||0)+1;
+      if (hasWon(room.board,pos,mark)) { room.winner=mark; room.status="finished"; }
+      else if (room.moves>=SIZE*SIZE) { room.winner="DRAW"; room.status="finished"; }
+      else room.turn=mark==="X"?"O":"X";
+      room.turnStartedAt=firebase.database.ServerValue.TIMESTAMP;
+      room.updatedAt=firebase.database.ServerValue.TIMESTAMP;
+      return room;
+    },undefined,false);
+    if (!result.committed) say("gameMessage","Nước đi không hợp lệ hoặc không phải lượt của anh.",true);
+  } catch(e) { say("gameMessage","Lỗi khi đánh: "+e.message,true); }
+}
+async function requestRematch() {
+  if (!activeCode || !activeRoom || !uid) return;
+  try {
+    const ref=db.ref(`${ROOT}/rooms/${activeCode}`);
+    const result=await ref.transaction(room=>{
+      if (!room || (room.xUid!==uid && room.oUid!==uid)) return;
+      if (room.status!=="finished") return;
+      room.board=boardEmpty(); room.turn="X"; room.moves=0; room.winner="";
+      room.status=room.oUid?"playing":"waiting";
+      room.rematchRequestedBy=uid;
+      room.turnStartedAt=firebase.database.ServerValue.TIMESTAMP;
+      room.updatedAt=firebase.database.ServerValue.TIMESTAMP;
+      return room;
+    },undefined,false);
+    if (!result.committed) say("gameMessage","Chỉ có thể chơi lại khi ván đã kết thúc.",true);
+  } catch(e) { say("gameMessage","Không thể chơi lại: "+e.message,true); }
+}
+
+function listenChat(code) {
+  const ref=db.ref(`${ROOT}/rooms/${code}/chat`).limitToLast(40);
+  chatListener=ref.on("value",snap=>{
+    const list=$("chatList"); list.innerHTML="";
+    if (!snap.exists()) { list.innerHTML='<p class="muted">Chưa có tin nhắn.</p>'; return; }
+    snap.forEach(child=>{
+      const m=child.val()||{};
+      const div=document.createElement("div"); div.className="chatItem";
+      const strong=document.createElement("b"); strong.textContent=(m.name||"Người chơi")+": ";
+      const span=document.createElement("span"); span.textContent=m.text||"";
+      div.append(strong,span); list.appendChild(div);
     });
-
-    showGame();
-    createV18UI();
-  }
-
-  // =================================
-  // CREATE ROOM
-  // =================================
-
-  async function createRoom() {
-    if (busy) return;
-
-    if (!uid || !db) {
-      message(setupMessage, "Firebase chưa kết nối.", true);
-      return;
-    }
-
-    busy = true;
-    playerName = getName();
-    message(setupMessage, "Đang tạo phòng...");
-
-    try {
-      let code = null;
-      let ref = null;
-
-      for (let i = 0; i < 10; i++) {
-        const candidate = makeCode();
-        const candidateRef = db.ref("games/" + candidate);
-        const snapshot = await candidateRef.once("value");
-
-        if (!snapshot.exists()) {
-          code = candidate;
-          ref = candidateRef;
-          break;
-        }
-      }
-
-      if (!ref) throw new Error("Không tạo được mã phòng. Hãy thử lại.");
-
-      await ref.set({
-        hostUid: uid,
-        hostName: playerName,
-        board: emptyBoard(),
-        turn: "X",
-        status: "waiting",
-        winner: null,
-        createdAt: firebase.database.ServerValue.TIMESTAMP
-      });
-
-      await connectRoom(code);
-      message(gameMessage, "Đã tạo phòng " + code + ". Gửi mã cho đối thủ.");
-
-    } catch (error) {
-      message(setupMessage, "Lỗi tạo phòng: " + error.message, true);
-    } finally {
-      busy = false;
-    }
-  }
-
-  // =================================
-  // JOIN ROOM
-  // =================================
-
-  async function joinRoom() {
-    if (busy) return;
-
-    if (!uid || !db) {
-      message(setupMessage, "Firebase chưa kết nối.", true);
-      return;
-    }
-
-    playerName = getName();
-
-    const input = $("roomInput");
-    const code = input ? input.value.trim().toUpperCase() : "";
-
-    if (!/^[A-Z0-9]{6}$/.test(code)) {
-      message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
-      return;
-    }
-
-    busy = true;
-    message(setupMessage, "Đang tìm phòng " + code + "...");
-
-    try {
-      const ref = db.ref("games/" + code);
-      const snapshot = await ref.once("value");
-
-      if (!snapshot.exists()) throw new Error("Không tìm thấy phòng " + code + ".");
-
-      const room = snapshot.val();
-
-      if (room.hostUid === uid) {
-        throw new Error("Máy này đang dùng cùng tài khoản với chủ phòng.");
-      }
-
-      if (room.status !== "waiting") {
-        throw new Error("Phòng không còn ở trạng thái chờ.");
-      }
-
-      if (room.guestUid) throw new Error("Phòng đã có người chơi thứ hai.");
-
-      const now = Date.now();
-
-      await ref.update({
-        guestUid: uid,
-        guestName: playerName,
-        status: "playing",
-        turnStartedAt: now,
-        turnDeadline: now + TURN_SECONDS * 1000
-      });
-
-      const verifySnapshot = await ref.once("value");
-
-      if (
-        !verifySnapshot.exists() ||
-        verifySnapshot.val().guestUid !== uid
-      ) {
-        throw new Error("Máy chủ chưa xác nhận tham gia.");
-      }
-
-      await connectRoom(code);
-      message(gameMessage, "Tham gia phòng thành công. Anh chơi quân O.");
-
-    } catch (error) {
-      message(setupMessage, "Lỗi tham gia: " + error.message, true);
-    } finally {
-      busy = false;
-    }
-  }
-
-  // =================================
-  // PLAY
-  // =================================
-
-  async function play(index) {
-    if (!roomRef || !currentRoom) return;
-
-    const role = getRole(currentRoom);
-
-    if (!role || currentRoom.status !== "playing") return;
-
-    try {
-      const result = await roomRef.transaction(room => {
-        if (!room || room.status !== "playing") return;
-        if (room.turn !== role) return;
-
-        const deadline = Number(room.turnDeadline || 0);
-        if (deadline && Date.now() >= deadline) return;
-
-        const board = Array.isArray(room.board)
-          ? room.board.slice()
-          : emptyBoard();
-
-        if (board[index]) return;
-
-        board[index] = role;
-
-        const winner = winningMark(board);
-        const isDraw = !winner && board.every(Boolean);
-        const now = Date.now();
-
-        room.board = board;
-        room.lastMove = index;
-        room.winner = winner || null;
-
-        room.status = winner || isDraw ? "finished" : "playing";
-        room.turn = role === "X" ? "O" : "X";
-
-        room.turnStartedAt = now;
-        room.turnDeadline = now + TURN_SECONDS * 1000;
-
-        if (isDraw) room.finishReason = "draw";
-        if (winner) room.finishReason = "normal";
-
-        return room;
-      });
-
-      if (!result.committed) {
-        message(gameMessage, "Nước đi không được chấp nhận hoặc đã hết giờ.", true);
-      }
-
-    } catch (error) {
-      message(gameMessage, "Lỗi đánh: " + error.message, true);
-    }
-  }
-
-  // =================================
-  // TIMER + TIMEOUT
-  // =================================
-
-  function refreshTimer() {
-    if (!currentRoom || currentRoom.status !== "playing") return;
-
-    const deadline = Number(currentRoom.turnDeadline || 0);
-
-    if (!deadline) {
-      updateTimerDisplay(TURN_SECONDS, "playing");
-      return;
-    }
-
-    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-
-    updateTimerDisplay(remaining, "playing");
-
-    if (remaining <= 0) {
-      expireTurn();
-    }
-  }
-
-  async function expireTurn() {
-    if (!roomRef || timeoutBusy) return;
-    timeoutBusy = true;
-
-    try {
-      await roomRef.transaction(room => {
-        if (!room || room.status !== "playing") return;
-
-        const deadline = Number(room.turnDeadline || 0);
-
-        if (!deadline || Date.now() < deadline) return;
-
-        room.status = "finished";
-        room.winner = room.turn === "X" ? "O" : "X";
-        room.finishReason = "timeout";
-        room.finishedAt = Date.now();
-
-        return room;
-      });
-    } catch (error) {
-      console.error("TIMEOUT ERROR:", error);
-    } finally {
-      timeoutBusy = false;
-    }
-  }
-
-  function startTimerLoop() {
-    if (timerInterval) clearInterval(timerInterval);
-
-    timerInterval = setInterval(() => {
-      refreshTimer();
-    }, 250);
-  }
-
-  // =================================
-  // ELO SYSTEM
-  // =================================
-
-  function getEloChange(myRating, opponentRating, score) {
-    const expected =
-      1 / (1 + Math.pow(10, (opponentRating - myRating) / 400));
-
-    return Math.round(32 * (score - expected));
-  }
-
-  async function updatePlayerElo(playerUid, name, delta, resultType) {
-    if (!playerUid) return;
-
-    const ref = db.ref(LEADERBOARD_PATH + "/" + playerUid);
-
-    await ref.transaction(old => {
-      const data = old || {
-        uid: playerUid,
-        name: name || "Người chơi",
-        rating: 1000,
-        wins: 0,
-        losses: 0,
-        draws: 0,
-        games: 0
-      };
-
-      data.name = name || data.name || "Người chơi";
-      data.rating = Math.max(100, Number(data.rating || 1000) + delta);
-      data.games = Number(data.games || 0) + 1;
-
-      if (resultType === "win") data.wins = Number(data.wins || 0) + 1;
-      if (resultType === "loss") data.losses = Number(data.losses || 0) + 1;
-      if (resultType === "draw") data.draws = Number(data.draws || 0) + 1;
-
-      data.updatedAt = Date.now();
-
-      return data;
+    list.scrollTop=list.scrollHeight;
+  });
+}
+async function sendChat() {
+  const text=String($("chatInput").value||"").trim().slice(0,240);
+  if (!text || !activeCode || !activeRoom) return;
+  try {
+    await db.ref(`${ROOT}/rooms/${activeCode}/chat`).push({uid,name:playerName,text,createdAt:now()});
+    $("chatInput").value="";
+  } catch(e) { say("gameMessage","Không gửi được chat: "+e.message,true); }
+}
+
+async function addQueue() {
+  if (!isHost()) return say("hostMessage","Tài khoản này không có quyền HOST.",true);
+  const name=String($("queueName").value||"").trim().slice(0,40);
+  const coins=Math.max(0,Math.min(1000000,Number($("queueCoins").value)||0));
+  if (!name) return say("hostMessage","Nhập TikTok ID hoặc tên người chơi.",true);
+  try {
+    const ref=db.ref(`${ROOT}/queue`).push();
+    await ref.set({name,coins,createdAt:now(),status:"waiting",addedBy:uid});
+    $("queueName").value=""; $("queueCoins").value="0";
+    say("hostMessage","Đã thêm "+name+" vào danh sách chờ.");
+  } catch(e) { say("hostMessage","Không thêm được: "+e.message,true); }
+}
+function listenQueue() {
+  if (!isHost()) return;
+  const ref=db.ref(`${ROOT}/queue`).orderByChild("createdAt").limitToLast(100);
+  queueListener=ref.on("value",snap=>{
+    const items=[];
+    snap.forEach(ch=>items.push({key:ch.key,...(ch.val()||{})}));
+    items.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    const list=$("queueList"); list.innerHTML="";
+    const waiting=items.filter(x=>x.status==="waiting");
+    if (!waiting.length) { list.innerHTML='<p class="muted">Chưa có người chờ.</p>'; return; }
+    waiting.forEach((item,i)=>{
+      const row=document.createElement("div"); row.className="queueItem";
+      const left=document.createElement("span"); left.textContent=`${i+1}. ${item.name}`;
+      const right=document.createElement("b"); right.textContent=`${item.coins||0} xu`;
+      row.append(left,right); list.appendChild(row);
     });
-  }
+  },err=>say("hostMessage","Không đọc được danh sách chờ: "+err.message,true));
+}
+async function callNext() {
+  if (!isHost()) return say("hostMessage","Không có quyền HOST.",true);
+  try {
+    const snap=await db.ref(`${ROOT}/queue`).orderByChild("createdAt").once("value");
+    let next=null;
+    snap.forEach(ch=>{ const v=ch.val()||{}; if (!next && v.status==="waiting") next={key:ch.key,...v}; });
+    if (!next) return say("hostMessage","Danh sách chờ đang trống.");
+    await db.ref(`${ROOT}/queue/${next.key}`).update({status:"called",calledAt:now()});
+    $("queueName").value=next.name;
+    say("hostMessage",`Đã gọi ${next.name}. Anh bấm “Tạo phòng mới”, rồi gửi mã phòng cho người chơi.`);
+  } catch(e) { say("hostMessage","Không gọi được: "+e.message,true); }
+}
 
-  async function applyEloOnce(room) {
-    if (!room || !roomRef || eloBusy) return;
-    if (room.eloApplied) return;
-    if (!room.hostUid || !room.guestUid) return;
-
-    eloBusy = true;
-
-    try {
-      // Claim kết quả để tránh hai máy cùng cộng ELO
-      const claim = await roomRef.transaction(data => {
-        if (!data || data.status !== "finished") return;
-        if (data.eloApplied) return;
-
-        data.eloApplied = true;
-        return data;
-      });
-
-      if (!claim.committed) return;
-
-      const finalRoom = claim.snapshot.val();
-      const hostUid = finalRoom.hostUid;
-      const guestUid = finalRoom.guestUid;
-
-      const boardRef = db.ref(LEADERBOARD_PATH);
-
-      const [hostSnap, guestSnap] = await Promise.all([
-        boardRef.child(hostUid).once("value"),
-        boardRef.child(guestUid).once("value")
-      ]);
-
-      const hostRating = Number(hostSnap.val()?.rating || 1000);
-      const guestRating = Number(guestSnap.val()?.rating || 1000);
-
-      if (!finalRoom.winner) {
-        const hostDelta = getEloChange(hostRating, guestRating, 0.5);
-        const guestDelta = getEloChange(guestRating, hostRating, 0.5);
-
-        await Promise.all([
-          updatePlayerElo(hostUid, finalRoom.hostName, hostDelta, "draw"),
-          updatePlayerElo(guestUid, finalRoom.guestName, guestDelta, "draw")
-        ]);
-      } else {
-        const hostWon = finalRoom.winner === "X";
-
-        const hostDelta = getEloChange(
-          hostRating,
-          guestRating,
-          hostWon ? 1 : 0
-        );
-
-        const guestDelta = getEloChange(
-          guestRating,
-          hostRating,
-          hostWon ? 0 : 1
-        );
-
-        await Promise.all([
-          updatePlayerElo(
-            hostUid,
-            finalRoom.hostName,
-            hostDelta,
-            hostWon ? "win" : "loss"
-          ),
-          updatePlayerElo(
-            guestUid,
-            finalRoom.guestName,
-            guestDelta,
-            hostWon ? "loss" : "win"
-          )
-        ]);
-      }
-
-      loadLeaderboard();
-
-    } catch (error) {
-      console.error("ELO ERROR:", error);
-      message(gameMessage, "Lỗi cập nhật ELO: " + error.message, true);
-    } finally {
-      eloBusy = false;
-    }
-  }
-
-  async function loadLeaderboard() {
-    if (!db) return;
-
-    const list = $("v18LeaderboardList");
-    if (!list) return;
-
-    try {
-      const snapshot = await db.ref(LEADERBOARD_PATH).once("value");
-      const data = snapshot.val() || {};
-
-      const players = Object.values(data)
-        .filter(item => item && item.uid)
-        .sort((a, b) => Number(b.rating || 1000) - Number(a.rating || 1000))
-        .slice(0, 10);
-
-      list.innerHTML = "";
-
-      if (!players.length) {
-        list.textContent = "Chưa có dữ liệu xếp hạng.";
-        return;
-      }
-
-      players.forEach((player, index) => {
-        const row = document.createElement("div");
-        row.style.cssText =
-          "display:flex;justify-content:space-between;" +
-          "padding:8px 4px;border-bottom:1px solid #30425a;";
-
-        const name = document.createElement("span");
-        name.textContent =
-          (index + 1) + ". " + (player.name || "Người chơi");
-
-        const score = document.createElement("strong");
-        score.textContent = Number(player.rating || 1000) + " ELO";
-
-        row.append(name, score);
-        list.appendChild(row);
-      });
-
-    } catch (error) {
-      list.textContent = "Không tải được bảng xếp hạng.";
-      console.error("LEADERBOARD ERROR:", error);
-    }
-  }
-
-  // =================================
-  // RESTART
-  // =================================
-
-  async function restart() {
-    if (!roomRef || !currentRoom) return;
-
-    if (currentRoom.hostUid !== uid) {
-      message(gameMessage, "Chỉ chủ phòng mới được bắt đầu ván mới.", true);
-      return;
-    }
-
-    if (!currentRoom.guestUid) {
-      message(gameMessage, "Đang chờ người chơi thứ hai.", true);
-      return;
-    }
-
-    try {
-      const now = Date.now();
-
-      await roomRef.update({
-        board: emptyBoard(),
-        turn: "X",
-        status: "playing",
-        winner: null,
-        lastMove: null,
-        finishReason: null,
-        eloApplied: null,
-        turnStartedAt: now,
-        turnDeadline: now + TURN_SECONDS * 1000
-      });
-
-      message(gameMessage, "Đã bắt đầu ván mới.");
-
-    } catch (error) {
-      message(gameMessage, "Lỗi bắt đầu ván: " + error.message, true);
-    }
-  }
-
-  // =================================
-  // LEAVE ROOM
-  // =================================
-
-  function leaveRoom() {
-    stopListening();
-    roomCode = null;
-    currentRoom = null;
-    showSetup();
-    message(setupMessage, "Đã rời khỏi phòng.");
-  }
-
-  // =================================
-  // LIVE HOST CENTER
-  // =================================
-
-  function isHost() {
-    return uid === HOST_UID;
-  }
-
-  function showHostPanel() {
-    if (!liveHostPanel) {
-      console.error("Không tìm thấy liveHostPanel trong HTML.");
-      return;
-    }
-
-    if (!isHost()) {
-      liveHostPanel.classList.add("hidden");
-      return;
-    }
-
-    liveHostPanel.classList.remove("hidden");
-    liveHostPanel.style.display = "block";
-    startQueueListening();
-  }
-
-  function startQueueLis
+$("createRoom").addEventListener("click",createRoom);
+$("joinRoom").addEventListener("click",joinRoom);
+$("leaveRoom").addEventListener("click",()=>leaveRoom());
+$("rematch").addEventListener("click",requestRematch);
+$("sendChat").addEventListener("click",sendChat);
+$("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter")sendChat();});
+$("addQueue").addEventListener("click",addQueue);
+$("callNext").addEventListener("click",callNext);
+$("copyInvite").addEventListener("click",async()=>{
+  if(!activeCode)return;
+  const link=location.origin+location.pathname+"?room="+activeCode;
+  try{await navigator.clipboard.writeText(link);say("roomMessage","Đã chép link phòng: "+link);}
+  catch(_){say("roomMessage","Link phòng: "+link);}
+});
+const roomFromUrl=new URLSearchParams(location.search).get("room");
+if(roomFromUrl){$("roomCode").value=roomFromUrl.toUpperCase();}
+init();
+})();

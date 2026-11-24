@@ -1,10 +1,30 @@
 {
   "rules": {
+    "arenaV2": {
+      "rooms": {
+        "$roomId": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.uid == 'FhBvb1ZyyeYBraKPJChgcpdoNHX2' || (!data.exists() && newData.child('xUid').val() == auth.uid) || (data.exists() && (auth.uid == data.child('xUid').val() || auth.uid == data.child('oUid').val())) || (data.exists() && data.child('status').val() == 'waiting' && data.child('oUid').val() == '' && newData.child('oUid').val() == auth.uid && newData.child('xUid').val() == data.child('xUid').val()))"
+        }
+      },
+      "queue": {
+        ".read": "auth != null && auth.uid == 'FhBvb1ZyyeYBraKPJChgcpdoNHX2'",
+        ".write": "auth != null && auth.uid == 'FhBvb1ZyyeYBraKPJChgcpdoNHX2'"
+      }
+    },
     "games": {
       "$roomId": {
         ".read": "auth != null",
         ".write": "auth != null"
       }
+    },
+    "liveHost": {
+      ".read": "auth != null && auth.uid == 'FhBvb1ZyyeYBraKPJChgcpdoNHX2'",
+      ".write": "auth != null && auth.uid == 'FhBvb1ZyyeYBraKPJChgcpdoNHX2'"
+    },
+    "liveQueue": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.uid == 'FhBvb1ZyyeYBraKPJChgcpdoNHX2'"
     }
   }
 }
