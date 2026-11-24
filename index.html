@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="vi">
 <head>
@@ -9,6 +10,7 @@
 </head>
 <body>
   <main class="app">
+
     <header class="topbar">
       <div class="brand-mark">✕<span>○</span></div>
       <div>
@@ -18,117 +20,191 @@
       <span class="live-pill"><i></i> LIVE</span>
     </header>
 
+    <!-- KHU VỰC TẠO VÀ THAM GIA PHÒNG -->
     <section class="panel setup-panel" id="setupPanel">
       <div class="section-heading">
-        <div><small>CHÀO MỪNG ĐẾN ĐẤU TRƯỜNG</small><h2>Sẵn sàng khai cuộc?</h2></div>
+        <div>
+          <small>CHÀO MỪNG ĐẾN ĐẤU TRƯỜNG</small>
+          <h2>Sẵn sàng khai cuộc?</h2>
+        </div>
         <span class="avatar">♟</span>
       </div>
+
       <label for="playerName">Tên người chơi</label>
-      <input id="playerName" maxlength="18" placeholder="Nhập tên của anh..." autocomplete="nickname">
+      <input
+        id="playerName"
+        maxlength="18"
+        placeholder="Nhập tên của anh..."
+        autocomplete="nickname"
+      >
+
       <div class="action-grid">
-        <button class="primary" id="createBtn">＋ Tạo phòng mới</button>
+        <button class="primary" id="createBtn">
+          ＋ Tạo phòng mới
+        </button>
+
         <div class="join-row">
-          <input id="roomInput" maxlength="6" placeholder="MÃ PHÒNG" autocapitalize="characters">
-          <button class="secondary" id="joinBtn">Vào phòng</button>
+          <input
+            id="roomInput"
+            maxlength="6"
+            placeholder="MÃ PHÒNG"
+            autocapitalize="characters"
+          >
+          <button class="secondary" id="joinBtn">
+            Vào phòng
+          </button>
         </div>
       </div>
-      <p class="hint" id="setupMessage">Tạo phòng và gửi mã cho bạn bè để cùng chơi.</p>
+
+      <p class="hint" id="setupMessage">
+        Tạo phòng và gửi mã cho bạn bè để cùng chơi.
+      </p>
     </section>
 
+    <!-- KHU VỰC CHƠI CARO -->
     <section class="panel game-panel hidden" id="gamePanel">
+
       <div class="room-head">
-        <div><small>PHÒNG ĐẤU</small><strong id="roomCode">------</strong></div>
-        <button class="copy-btn" id="copyBtn">Sao chép mã</button>
+        <div>
+          <small>PHÒNG ĐẤU</small>
+          <strong id="roomCode">------</strong>
+        </div>
+        <button class="copy-btn" id="copyBtn">
+          Sao chép mã
+        </button>
       </div>
+
       <div class="players">
         <div class="player-card active" id="xCard">
           <span class="symbol x-symbol">X</span>
-          <div><small>QUÂN X · CHỦ PHÒNG</small><strong id="xName">Đang chờ...</strong></div>
+          <div>
+            <small>QUÂN X · CHỦ PHÒNG</small>
+            <strong id="xName">Đang chờ...</strong>
+          </div>
         </div>
+
         <div class="player-card" id="oCard">
           <span class="symbol o-symbol">O</span>
-          <div><small>QUÂN O · KHÁCH</small><strong id="oName">Đang chờ đối thủ</strong></div>
+          <div>
+            <small>QUÂN O · KHÁCH</small>
+            <strong id="oName">Đang chờ đối thủ</strong>
+          </div>
         </div>
       </div>
-      <div class="status-bar" id="statusBar">Đang kết nối...</div>
+
+      <div class="status-bar" id="statusBar">
+        Đang kết nối...
+      </div>
+
       <div class="board-wrap">
-        <div class="board" id="board" role="grid" aria-label="Bàn cờ Caro 15 nhân 15"></div>
+        <div
+          class="board"
+          id="board"
+          role="grid"
+          aria-label="Bàn cờ Caro 15 nhân 15"
+        ></div>
       </div>
+
       <div class="game-actions">
-        <button class="secondary" id="backBtn">Rời phòng</button>
-        <button class="primary" id="restartBtn">Chơi ván mới</button>
+        <button class="secondary" id="backBtn">
+          Rời phòng
+        </button>
+        <button class="primary" id="restartBtn">
+          Chơi ván mới
+        </button>
       </div>
-      <p class="hint" id="gameMessage">Chia sẻ mã phòng để mời người chơi thứ hai.</p>
+
+      <p class="hint" id="gameMessage">
+        Chia sẻ mã phòng để mời người chơi thứ hai.
+      </p>
     </section>
 
-    
-<section class="panel hidden" id="liveHostPanel">
-  <div class="section-heading">
-    <div>
-      <small>QUẢN TRỊ PHÁT TRỰC TIẾP</small>
-      <h2>LIVE HOST CENTER</h2>
-    </div>
-    <span class="avatar">👑</span>
-  </div>
+    <!-- TRUNG TÂM QUẢN LÝ LIVE HOST -->
+    <section class="panel hidden" id="liveHostPanel">
 
-  <div class="status-bar">
-    CHẾ ĐỘ QUẢN TRỊ · CHỈ HOST
-  </div>
+      <div class="section-heading">
+        <div>
+          <small>QUẢN TRỊ PHÁT TRỰC TIẾP</small>
+          <h2>LIVE HOST CENTER</h2>
+        </div>
+        <span class="avatar">👑</span>
+      </div>
 
-  <label for="queuePlayerName">Tên TikTok người đăng ký</label>
-  <input id="queuePlayerName"
-         maxlength="30"
-         placeholder="Nhập tên người chơi">
+      <div class="status-bar">
+        CHẾ ĐỘ QUẢN TRỊ · CHỈ HOST
+      </div>
 
-  <label for="queueGiftValue" style="margin-top:12px">
-    Giá trị quà (xu)
-  </label>
-  <input id="queueGiftValue"
-         type="number"
-         min="1"
-         max="1000000"
-         placeholder="Ví dụ: 100">
+      <label for="queuePlayerName">
+        Tên TikTok người đăng ký
+      </label>
 
-  <button class="primary"
-          id="queueAddBtn"
-          style="width:100%;margin-top:12px">
-    + Thêm vào hàng chờ
-  </button>
+      <input
+        id="queuePlayerName"
+        maxlength="30"
+        placeholder="Nhập tên người chơi"
+      >
 
-  <div class="room-head" style="margin-top:22px">
-    <div>
-      <small>DANH SÁCH ƯU TIÊN</small>
-      <strong style="font-size:19px;letter-spacing:0">
-        HÀNG CHỜ LIVE
-      </strong>
-    </div>
-    <span id="queueCount">0 người</span>
-  </div>
+      <label for="queueGiftValue" style="margin-top:12px">
+        Giá trị quà (xu)
+      </label>
 
-  <div id="liveQueueList" style="margin-top:12px">
-    <p class="hint">Chưa có người đăng ký.</p>
-  </div>
+      <input
+        id="queueGiftValue"
+        type="number"
+        min="1"
+        max="1000000"
+        placeholder="Ví dụ: 100"
+      >
 
-  <div class="game-actions">
-    <button class="secondary" id="queueSkipBtn">
-      Bỏ qua người đầu
-    </button>
-    <button class="primary" id="queueNextBtn">
-      Chọn người tiếp theo
-    </button>
-  </div>
+      <button
+        class="primary"
+        id="queueAddBtn"
+        style="width:100%;margin-top:12px"
+      >
+        + Thêm vào hàng chờ
+      </button>
 
-  <p class="hint" id="liveHostMessage">
-    Bảng quản lý chỉ dành cho HOST.
-  </p>
-</section>
+      <div class="room-head" style="margin-top:22px">
+        <div>
+          <small>DANH SÁCH ƯU TIÊN</small>
+          <strong style="font-size:19px;letter-spacing:0">
+            HÀNG CHỜ LIVE
+          </strong>
+        </div>
+        <span id="queueCount">0 người</span>
+      </div>
+
+      <div id="liveQueueList" style="margin-top:12px">
+        <p class="hint">Chưa có người đăng ký.</p>
+      </div>
+
+      <div class="game-actions">
+        <button class="secondary" id="queueSkipBtn">
+          Bỏ qua người đầu
+        </button>
+        <button class="primary" id="queueNextBtn">
+          Chọn người tiếp theo
+        </button>
+      </div>
+
+      <p class="hint" id="liveHostMessage">
+        Bảng quản lý chỉ dành cho HOST.
+      </p>
+
+    </section>
 
   </main>
 
+  <!-- FIREBASE SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+
+  <!-- FIREBASE CONFIG -->
   <script src="firebase-config.js"></script>
-  <script src="app.js"></script>
+
+  <!-- CARO LIVE ARENA APP -->
+  <script src="app.js?v=16"></script>
+
 </body>
 </html>
