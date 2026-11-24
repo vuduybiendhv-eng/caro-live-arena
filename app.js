@@ -10,8 +10,7 @@
   const TOTAL = SIZE * SIZE;
 
   // UID DUY NHẤT ĐƯỢC QUẢN LÝ LIVE HOST
-  const HOST_UID = "F8pIRePt0cYnHSHWD4C4ZUzYgHe2";
-
+  const HOST_UID = "NFiHocrXdxV19KJdEg8mf1kUFl42";
   let db = null;
   let auth = null;
   let uid = null;
