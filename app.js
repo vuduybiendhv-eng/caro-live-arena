@@ -122,26 +122,72 @@
       await connectRoom(code);
     } catch (e) { message(setupMessage, e.message, true); }
   }
-  async function joinRoom() {
-    playerName = getName();
-    const code = $("roomInput").value.trim().toUpperCase();
-    if (!/^[A-Z0-9]{6}$/.test(code)) {
-      message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true); return;
-    }
-    message(setupMessage, "Đang tham gia phòng...");
-    const ref = db.ref("games/" + code);
-    try {
-      const result = await ref.transaction(room => {
-        if (!room || room.status !== "waiting" || room.hostUid === uid || room.guestUid) return;
-        room.guestUid = uid;
-        room.guestName = playerName;
-        room.status = "playing";
-        return room;
-      });
-      if (!result.committed) throw new Error("Phòng không tồn tại, đã đủ người hoặc đã bắt đầu.");
-      await connectRoom(code);
-    } catch (e) { message(setupMessage, e.message, true); }
+
+async function joinRoom() {
+  playerName = getName();
+
+  const code = $("roomInput").value.trim().toUpperCase();
+
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
+    return;
   }
+
+  message(setupMessage, "Đang kiểm tra phòng...");
+
+  const ref = db.ref("games/" + code);
+
+  try {
+    // Kiểm tra phòng trước khi tham gia
+    const snap = await ref.once("value");
+
+    if (!snap.exists()) {
+      throw new Error("Không tìm thấy mã phòng " + code);
+    }
+
+    const room = snap.val();
+
+    if (room.hostUid === uid) {
+      throw new Error("Máy này đang dùng tài khoản chủ phòng.");
+    }
+
+    if (room.status !== "waiting") {
+      throw new Error("Phòng không ở trạng thái chờ. Trạng thái: " + room.status);
+    }
+
+    if (room.guestUid) {
+      throw new Error("Phòng đã có người chơi thứ hai.");
+    }
+
+    message(setupMessage, "Đang tham gia phòng...");
+
+    const result = await ref.transaction(current => {
+      if (!current) return;
+
+      if (current.status !== "waiting") return;
+
+      if (current.guestUid) return;
+
+      if (current.hostUid === uid) return;
+
+      current.guestUid = uid;
+      current.guestName = playerName;
+      current.status = "playing";
+
+      return current;
+    });
+
+    if (!result.committed) {
+      throw new Error("Không thể nhận phòng. Có thể người khác đã tham gia trước.");
+    }
+
+    await connectRoom(code);
+
+  } catch (e) {
+    message(setupMessage, "Lỗi tham gia: " + e.message, true);
+  }
+}
+
   async function play(index) {
     if (!roomRef || !currentRoom) return;
     const role = getRole(currentRoom);
