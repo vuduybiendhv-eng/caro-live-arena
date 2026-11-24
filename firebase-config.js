@@ -10,5 +10,5 @@ window.firebaseConfig = {
   projectId: "caro-fight",
   storageBucket: "caro-fight.firebasestorage.app",
   messagingSenderId: "209006748943",
-  appId: "1:1025788236540:web:b449daedd47049fce87d79"
+  appId:"1:1025788236540:web:b449daedd47049fce87d79"
 };
