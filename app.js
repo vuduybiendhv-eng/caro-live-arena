@@ -242,86 +242,57 @@
     }
   }
 
-  async function joinRoom() {
-    playerName = getName();
+  
+async function joinRoom() {
+  playerName = getName();
 
-    const code = $("roomInput").value.trim().toUpperCase();
+  const code = $("roomInput").value.trim().toUpperCase();
 
-    if (!/^[A-Z0-9]{6}$/.test(code)) {
-      message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
-      return;
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    message(setupMessage, "Mã phòng phải gồm đúng 6 ký tự.", true);
+    return;
+  }
+
+  message(setupMessage, "Đang kiểm tra phòng...");
+
+  const ref = db.ref("games/" + code);
+
+  try {
+    const snap = await ref.once("value");
+
+    if (!snap.exists()) {
+      throw new Error("Không tìm thấy phòng " + code);
     }
 
-    message(setupMessage, "Đang kiểm tra phòng...");
+    const room = snap.val();
 
-    const ref = db.ref("games/" + code);
-
-    let txDebug = "Phòng đã thay đổi hoặc có người tham gia trước.";
-
-    try {
-      const snap = await ref.once("value");
-
-      if (!snap.exists()) {
-        throw new Error("Không tìm thấy phòng " + code);
-      }
-
-      const room = snap.val();
-
-      if (room.hostUid === uid) {
-        throw new Error("Hai máy đang dùng cùng tài khoản Firebase.");
-      }
-
-      if (room.status !== "waiting") {
-        throw new Error("Trạng thái phòng: " + room.status);
-      }
-
-      if (room.guestUid) {
-        throw new Error("Phòng đã có người chơi thứ hai.");
-      }
-
-      message(setupMessage, "Đang tham gia phòng...");
-
-      const result = await ref.transaction(current => {
-        if (!current) {
-          txDebug = "Dữ liệu phòng không tồn tại.";
-          return;
-        }
-
-        if (current.status !== "waiting") {
-          txDebug = "Trạng thái hiện tại: " + current.status;
-          return;
-        }
-
-        if (current.guestUid) {
-          txDebug = "Phòng đã có người chơi thứ hai.";
-          return;
-        }
-
-        if (current.hostUid === uid) {
-          txDebug = "UID máy 2 trùng UID chủ phòng.";
-          return;
-        }
-
-        current.guestUid = uid;
-        current.guestName = playerName;
-        current.status = "playing";
-
-        return current;
-      });
-
-      if (!result.committed) {
-        throw new Error(txDebug);
-      }
-
-      await connectRoom(code);
-
-    } catch (e) {
-      message(
-        setupMessage,
-        "Lỗi tham gia: " + e.message,
-        true
-      );
+    if (room.hostUid === uid) {
+      throw new Error("Hai máy đang dùng cùng tài khoản.");
     }
+
+    if (room.status !== "waiting") {
+      throw new Error("Phòng không ở trạng thái chờ.");
+    }
+
+    if (room.guestUid) {
+      throw new Error("Phòng đã có người tham gia.");
+    }
+
+    message(setupMessage, "Đang tham gia phòng...");
+
+    await ref.update({
+      guestUid: uid,
+      guestName: playerName,
+      status: "playing"
+    });
+
+    await connectRoom(code);
+
+  } catch (e) {
+    message(setupMessage, "Lỗi tham gia: " + e.message, true);
+  }
+}
+
   }
 
   async function play(index) {
